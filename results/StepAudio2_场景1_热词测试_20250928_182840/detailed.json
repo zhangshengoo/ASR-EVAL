@@ -1,0 +1,59 @@
+{
+  "metadata": {
+    "total_items": 2,
+    "timestamp": "2025-09-28T18:28:40.970899",
+    "model_info": {
+      "model_name": "Step-Audio-2-mini",
+      "model_type": "StepAudio2",
+      "hotwords": []
+    }
+  },
+  "summary": {
+    "default": {
+      "total_items": 2,
+      "correct_items": 0,
+      "accuracy": 0.0,
+      "average_wer": 1.0
+    }
+  },
+  "detailed_results": [
+    {
+      "file_info": {
+        "path": "datasets/热词测试/场景1/test1.wav",
+        "filename": "test1.wav"
+      },
+      "text_info": {
+        "reference": "AI帮助很大",
+        "predicted": "StepAudio2后备实现",
+        "match": false
+      },
+      "metrics": {
+        "wer": 1.0,
+        "cer": 0.8333,
+        "confidence": 0.8,
+        "rtf": 1.0,
+        "processing_time": 0.1
+      },
+      "metadata": {}
+    },
+    {
+      "file_info": {
+        "path": "datasets/热词测试/场景1/test2.wav",
+        "filename": "test2.wav"
+      },
+      "text_info": {
+        "reference": "使用LLM技术",
+        "predicted": "语音识别测试",
+        "match": false
+      },
+      "metrics": {
+        "wer": 1.0,
+        "cer": 1.0,
+        "confidence": 0.8,
+        "rtf": 1.0,
+        "processing_time": 0.1
+      },
+      "metadata": {}
+    }
+  ]
+}

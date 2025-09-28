@@ -1,0 +1,50 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>ASR测试结果报告</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .summary { background: #f0f0f0; padding: 15px; margin: 10px 0; }
+        .result { border: 1px solid #ddd; margin: 10px 0; padding: 10px; }
+        .correct { background: #d4edda; }
+        .incorrect { background: #f8d7da; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background-color: #f2f2f2; }
+    </style>
+</head>
+<body>
+    <h1>ASR测试结果报告</h1>
+    <div class="summary">
+        <h2>测试摘要</h2>
+        <p>测试时间: 2025-09-28 18:28:40</p>
+        <p>总测试项: 2</p>
+        
+        <p>准确率: 0.00%</p>
+        <p>平均词错误率: 1.0000</p>
+        <p>正确识别: 0/2</p>
+        
+    </div>
+    <div class="detailed-results">
+        <table><tr><th>音频文件</th><th>参考文本</th><th>识别文本</th><th>WER</th><th>状态</th></tr>
+            <tr class="incorrect">
+                <td>test1.wav</td>
+                <td>AI帮助很大</td>
+                <td>StepAudio2后备实现</td>
+                <td>1.0000</td>
+                <td>错误</td>
+            </tr>
+            
+            <tr class="incorrect">
+                <td>test2.wav</td>
+                <td>使用LLM技术</td>
+                <td>语音识别测试</td>
+                <td>1.0000</td>
+                <td>错误</td>
+            </tr>
+            </table>
+    </div>
+</body>
+</html>
+        

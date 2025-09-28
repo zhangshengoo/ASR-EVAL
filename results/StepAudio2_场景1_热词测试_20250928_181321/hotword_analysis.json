@@ -1,0 +1,27 @@
+{
+  "hotword_analysis": {},
+  "scene_summary": {
+    "default": {
+      "total_items": 2,
+      "correct_items": 0,
+      "accuracy": 0.0,
+      "average_wer": 1.0
+    }
+  },
+  "results": [
+    {
+      "audio_path": "datasets/热词测试/场景1/test1.wav",
+      "reference": "AI帮助很大",
+      "predicted": "语音识别测试",
+      "wer": 1.0,
+      "correct": false
+    },
+    {
+      "audio_path": "datasets/热词测试/场景1/test2.wav",
+      "reference": "使用LLM技术",
+      "predicted": "AI帮助很大",
+      "wer": 1.0,
+      "correct": false
+    }
+  ]
+}

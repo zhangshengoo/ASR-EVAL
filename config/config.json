@@ -1,0 +1,74 @@
+{
+  "models": {
+    "kimi_audio": {
+      "enabled": true,
+      "model_path": "Model/KimiAudio",
+      "config_file": "config/models/kimi_audio.json",
+      "device": "cuda",
+      "batch_size": 1,
+      "language": "zh",
+      "additional_params": {}
+    },
+    "fire_red_asr": {
+      "enabled": true,
+      "model_path": "Model/FireRedASR",
+      "config_file": "config/models/fire_red_asr.json",
+      "device": "cuda",
+      "batch_size": 1,
+      "language": "zh",
+      "additional_params": {}
+    },
+    "step_audio2": {
+      "enabled": true,
+      "model_path": "Model/StepAudio2",
+      "config_file": "config/models/step_audio2.json",
+      "device": "cuda",
+      "batch_size": 1,
+      "language": "zh",
+      "additional_params": {}
+    }
+  },
+  "datasets": {
+    "regression": {
+      "path": "datasets/regression_test",
+      "description": "标准回归测试集，包含各种场景的语音样本"
+    },
+    "noise": {
+      "path": "datasets/noise_test",
+      "description": "噪音环境测试集，包含不同信噪比的语音样本"
+    },
+    "long_audio": {
+      "path": "datasets/long_audio_test",
+      "description": "长音频测试集，包含超过30秒的语音样本"
+    },
+    "accent": {
+      "path": "datasets/accent_test",
+      "description": "方言口音测试集，包含各种方言的语音样本"
+    },
+    "multilingual": {
+      "path": "datasets/multilingual_test",
+      "description": "多语言测试集，包含中文、英文、日文等多种语言"
+    }
+  },
+  "evaluation": {
+    "calculate_wer": true,
+    "calculate_cer": true,
+    "calculate_ser": true,
+    "calculate_rtf": true,
+    "calculate_confidence": true,
+    "language": "zh",
+    "normalize_text": true
+  },
+  "output": {
+    "save_detailed_results": true,
+    "save_summary": true,
+    "output_format": "json",
+    "output_dir": "results",
+    "create_timestamp_dir": true
+  },
+  "logging": {
+    "level": "INFO",
+    "file": "logs/asr_test.log",
+    "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  }
+}

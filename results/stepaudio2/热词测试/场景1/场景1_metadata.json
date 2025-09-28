@@ -1,0 +1,22 @@
+{
+  "model_name": "StepAudio2",
+  "dataset_name": "场景1_热词测试",
+  "scene_name": "场景1",
+  "test_type": "热词测试",
+  "timestamp": "20250928_182840",
+  "total_items": 2,
+  "results_summary": {
+    "summary": {
+      "total_items": 2,
+      "correct_count": 0,
+      "accuracy": 0.0,
+      "average_wer": 1.0,
+      "average_rtf": 1.0,
+      "average_confidence": 0.8,
+      "model_name": "unknown",
+      "dataset_name": "unknown",
+      "timestamp": "2025-09-28T18:28:40.972756"
+    },
+    "results_count": 2
+  }
+}

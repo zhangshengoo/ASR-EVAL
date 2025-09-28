@@ -1,0 +1,31 @@
+{
+  "model_name": "Step-Audio-2-mini",
+  "model_path": "Model/StepAudio2/Step-Audio-2-mini",
+  "device": "cuda",
+  "batch_size": 1,
+  "language": "zh",
+  "max_length": 512,
+  "sample_rate": 16000,
+  "api_url": null,
+  "use_fallback": false,
+  "hotwords": [
+    "AI",
+    "LLM",
+    "语音识别",
+    "热词",
+    "测试",
+    "模型",
+    "评估"
+  ],
+  "hotword_config": {
+    "enabled": true,
+    "confidence_threshold": 0.8,
+    "max_hotword_length": 20,
+    "case_sensitive": false
+  },
+  "audio_config": {
+    "supported_formats": ["wav", "mp3", "flac", "m4a", "ogg"],
+    "min_duration": 0.5,
+    "max_duration": 300
+  }
+}

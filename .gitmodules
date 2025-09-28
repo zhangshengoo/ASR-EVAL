@@ -1,0 +1,3 @@
+[submodule "Model/StepAudio2"]
+	path = Model/StepAudio2
+	url = https://github.com/stepfun-ai/Step-Audio2.git
