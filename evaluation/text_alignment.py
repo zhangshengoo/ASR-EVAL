@@ -1,48 +1,21 @@
 """
-Kaldi文本对齐工具集成模块
-使用Kaldi的align-text工具进行文本对齐和比较
+基于编辑距离的文本对齐模块
+使用动态规划算法进行文本对齐和比较
 """
 
-import subprocess
-import tempfile
-import os
-from typing import List, Tuple, Dict, Optional
+from typing import List, Tuple, Dict
 
 
 class TextAligner:
-    """Kaldi文本对齐器"""
+    """基于编辑距离的文本对齐器"""
 
-    def __init__(self, kaldi_path: Optional[str] = None):
-        """
-        初始化文本对齐器
-
-        Args:
-            kaldi_path: Kaldi工具的路径，如果为None则使用系统PATH
-        """
-        self.kaldi_path = kaldi_path or ""
-        self.align_text_cmd = self._find_kaldi_tool("align-text")
-
-    def _find_kaldi_tool(self, tool_name: str) -> str:
-        """查找Kaldi工具路径"""
-        if self.kaldi_path:
-            tool_path = os.path.join(self.kaldi_path, "src", "bin", tool_name)
-            if os.path.exists(tool_path):
-                return tool_path
-
-        # 尝试系统PATH
-        try:
-            result = subprocess.run(["which", tool_name],
-                                  capture_output=True, text=True)
-            if result.returncode == 0:
-                return result.stdout.strip()
-        except:
-            pass
-
-        return tool_name
+    def __init__(self):
+        """初始化文本对齐器"""
+        pass
 
     def align_text(self, reference: str, hypothesis: str) -> List[Tuple[str, str]]:
         """
-        使用align-text工具对齐两个文本
+        使用编辑距离算法对齐两个文本
 
         Args:
             reference: 参考文本
@@ -51,75 +24,78 @@ class TextAligner:
         Returns:
             对齐结果列表，每个元素是(reference_word, hypothesis_word)对
         """
-        if not self._check_kaldi_available():
-            return self._fallback_alignment(reference, hypothesis)
-
-        # 创建临时文件
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.ref', delete=False) as ref_file:
-            ref_file.write(reference)
-            ref_path = ref_file.name
-
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.hyp', delete=False) as hyp_file:
-            hyp_file.write(hypothesis)
-            hyp_path = hyp_file.name
-
-        try:
-            # 执行align-text命令
-            cmd = [self.align_text_cmd, "ark:" + ref_path, "ark:" + hyp_path, "ark:-"]
-            result = subprocess.run(cmd, capture_output=True, text=True)
-
-            if result.returncode != 0:
-                print(f"Kaldi对齐失败: {result.stderr}")
-                return self._fallback_alignment(reference, hypothesis)
-
-            return self._parse_alignment_output(result.stdout)
-
-        finally:
-            # 清理临时文件
-            os.unlink(ref_path)
-            os.unlink(hyp_path)
-
-    def _check_kaldi_available(self) -> bool:
-        """检查Kaldi工具是否可用"""
-        try:
-            result = subprocess.run([self.align_text_cmd, "--help"],
-                                  capture_output=True, text=True, timeout=5)
-            return result.returncode == 0
-        except:
-            return False
-
-    def _fallback_alignment(self, reference: str, hypothesis: str) -> List[Tuple[str, str]]:
-        """备用对齐方法（当Kaldi不可用时使用）"""
         ref_words = reference.split()
         hyp_words = hypothesis.split()
 
-        # 简单的逐词对齐
+        return self._edit_distance_alignment(ref_words, hyp_words)
+
+    def _edit_distance_alignment(self, ref_words: List[str], hyp_words: List[str]) -> List[Tuple[str, str]]:
+        """
+        使用动态规划计算编辑距离对齐
+
+        Args:
+            ref_words: 参考文本分词结果
+            hyp_words: 假设文本分词结果
+
+        Returns:
+            对齐结果列表
+        """
+        m, n = len(ref_words), len(hyp_words)
+
+        # 创建DP表
+        dp = [[0] * (n + 1) for _ in range(m + 1)]
+
+        # 初始化边界条件
+        for i in range(m + 1):
+            dp[i][0] = i
+        for j in range(n + 1):
+            dp[0][j] = j
+
+        # 填充DP表
+        for i in range(1, m + 1):
+            for j in range(1, n + 1):
+                if ref_words[i-1] == hyp_words[j-1]:
+                    dp[i][j] = dp[i-1][j-1]
+                else:
+                    dp[i][j] = min(
+                        dp[i-1][j] + 1,    # 删除
+                        dp[i][j-1] + 1,    # 插入
+                        dp[i-1][j-1] + 1   # 替换
+                    )
+
+        # 回溯构造对齐结果
         alignment = []
-        max_len = max(len(ref_words), len(hyp_words))
+        i, j = m, n
 
-        for i in range(max_len):
-            ref_word = ref_words[i] if i < len(ref_words) else ""
-            hyp_word = hyp_words[i] if i < len(hyp_words) else ""
-            alignment.append((ref_word, hyp_word))
+        while i > 0 and j > 0:
+            if ref_words[i-1] == hyp_words[j-1]:
+                alignment.append((ref_words[i-1], hyp_words[j-1]))
+                i -= 1
+                j -= 1
+            elif dp[i][j] == dp[i-1][j-1] + 1:
+                # 替换
+                alignment.append((ref_words[i-1], hyp_words[j-1]))
+                i -= 1
+                j -= 1
+            elif dp[i][j] == dp[i-1][j] + 1:
+                # 删除
+                alignment.append((ref_words[i-1], ""))
+                i -= 1
+            else:
+                # 插入
+                alignment.append(("", hyp_words[j-1]))
+                j -= 1
 
-        return alignment
+        # 处理剩余部分
+        while i > 0:
+            alignment.append((ref_words[i-1], ""))
+            i -= 1
+        while j > 0:
+            alignment.append(("", hyp_words[j-1]))
+            j -= 1
 
-    def _parse_alignment_output(self, output: str) -> List[Tuple[str, str]]:
-        """解析align-text输出"""
-        alignment = []
-        lines = output.strip().split('\n')
-
-        for line in lines:
-            if not line.strip():
-                continue
-
-            # 解析格式: utt-id ref-word hyp-word
-            parts = line.strip().split()
-            if len(parts) >= 3:
-                # 跳过utt-id，取ref和hyp词
-                ref_word = parts[1] if parts[1] != "*" else ""
-                hyp_word = parts[2] if parts[2] != "*" else ""
-                alignment.append((ref_word, hyp_word))
+        # 反转结果，因为我们是从后往前构造的
+        alignment.reverse()
 
         return alignment
 
@@ -141,10 +117,36 @@ class TextAligner:
 
         return "\n".join(lines)
 
+
+def demo_edit_distance_alignment():
+    """演示编辑距离对齐功能"""
+    aligner = TextAligner()
+
+    # 示例文本
+    reference = "今 天 天 气 很 好"
+    hypothesis = "今 天 天 天 很 号"
+
+    print("=== 编辑距离文本对齐演示 ===")
+    print()
+
+    # 使用print_alignment_demo方法打印对齐结果
+    aligner.print_alignment_demo(reference, hypothesis)
+
+    print()
+    print("=== 详细对齐信息 ===")
+    result = aligner.generate_diff_report(reference, hypothesis)
+    print(result['formatted_output'])
+
+    return result
+
+
+if __name__ == "__main__":
+    demo_edit_distance_alignment()
+
     def calculate_error_statistics(self, alignment: List[Tuple[str, str]]) -> Dict[str, int]:
         """计算错误统计"""
         total = len(alignment)
-        correct = sum(1 for ref, hyp in alignment if ref == hyp)
+        correct = sum(1 for ref, hyp in alignment if ref == hyp and ref != "")
         substitutions = sum(1 for ref, hyp in alignment if ref and hyp and ref != hyp)
         deletions = sum(1 for ref, hyp in alignment if ref and not hyp)
         insertions = sum(1 for ref, hyp in alignment if not ref and hyp)
@@ -158,18 +160,14 @@ class TextAligner:
         }
 
     def generate_diff_report(self, reference: str, hypothesis: str) -> Dict[str, any]:
-        """生成文本差异报告，包含基于align-text的可视化"""
+        """生成文本差异报告，包含基于编辑距离的可视化"""
         # 创建对齐结果
         alignment = self.align_text(reference, hypothesis)
-
-        # 如果Kaldi不可用，使用逐词对齐
-        if not self._check_kaldi_available():
-            alignment = self._fallback_alignment(reference, hypothesis)
 
         stats = self.calculate_error_statistics(alignment)
         formatted = self.format_alignment(alignment)
 
-        # 使用align-text结果生成可视化
+        # 使用编辑距离结果生成可视化
         visualizer = TextDiffVisualizer()
         ref_colored, hyp_colored = visualizer.color_diff_from_alignment(alignment)
         side_by_side = visualizer.side_by_side_diff_from_alignment(alignment)
@@ -189,9 +187,36 @@ class TextAligner:
             }
         }
 
+    def print_alignment_demo(self, reference: str, hypothesis: str) -> None:
+        """打印对齐结果的演示格式"""
+        alignment = self.align_text(reference, hypothesis)
+
+        ref_line = "ref : "
+        hyp_line = "hyp : "
+
+        for ref, hyp in alignment:
+            # 处理空字符串显示
+            ref_display = ref if ref else "**"
+            hyp_display = hyp if hyp else "**"
+
+            ref_line += f"{ref_display} "
+            hyp_line += f"{hyp_display} "
+
+        print(ref_line.rstrip())
+        print(hyp_line.rstrip())
+
+        # 显示统计信息
+        stats = self.calculate_error_statistics(alignment)
+        print(f"\n对齐统计:")
+        print(f"总词数: {stats['total']}")
+        print(f"正确: {stats['correct']}")
+        print(f"替换: {stats['substitutions']}")
+        print(f"删除: {stats['deletions']}")
+        print(f"插入: {stats['insertions']}")
+
 
 class TextDiffVisualizer:
-    """基于Kaldi align-text结果的文本差异可视化器"""
+    """基于编辑距离结果的文本差异可视化器"""
 
     @staticmethod
     def color_diff_from_alignment(alignment: List[Tuple[str, str]]) -> Tuple[str, str]:
@@ -256,6 +281,32 @@ class TextDiffVisualizer:
         lines.append("=" * (width * 2 + 15))
         return "\n".join(lines)
 
+
+def demo_edit_distance_alignment():
+    """演示编辑距离对齐功能"""
+    aligner = TextAligner()
+
+    # 示例文本
+    reference = "今 天 天 气 很 好"
+    hypothesis = "今 天 天 天 很 号"
+
+    print("=== 编辑距离文本对齐演示 ===")
+    print()
+
+    # 使用print_alignment_demo方法打印对齐结果
+    aligner.print_alignment_demo(reference, hypothesis)
+
+    print()
+    print("=== 详细对齐信息 ===")
+    result = aligner.generate_diff_report(reference, hypothesis)
+    print(result['formatted_output'])
+
+    return result
+
+
+if __name__ == "__main__":
+    demo_edit_distance_alignment()
+
     @staticmethod
     def word_level_diff(alignment: List[Tuple[str, str]]) -> str:
         """基于align-text结果生成词级差异分析"""
@@ -274,6 +325,32 @@ class TextDiffVisualizer:
                 lines.append(f"{i:2d}. ✗ [插入] → {hyp_word}")
 
         return "\n".join(lines)
+
+
+def demo_edit_distance_alignment():
+    """演示编辑距离对齐功能"""
+    aligner = TextAligner()
+
+    # 示例文本
+    reference = "今 天 天 气 很 好"
+    hypothesis = "今 天 天 天 很 号"
+
+    print("=== 编辑距离文本对齐演示 ===")
+    print()
+
+    # 使用print_alignment_demo方法打印对齐结果
+    aligner.print_alignment_demo(reference, hypothesis)
+
+    print()
+    print("=== 详细对齐信息 ===")
+    result = aligner.generate_diff_report(reference, hypothesis)
+    print(result['formatted_output'])
+
+    return result
+
+
+if __name__ == "__main__":
+    demo_edit_distance_alignment()
 
     @staticmethod
     def color_diff(reference: str, hypothesis: str) -> Tuple[str, str]:
@@ -338,3 +415,29 @@ class TextDiffVisualizer:
         lines.append("=" * (width * 2 + 10))
 
         return "\n".join(lines)
+
+
+def demo_edit_distance_alignment():
+    """演示编辑距离对齐功能"""
+    aligner = TextAligner()
+
+    # 示例文本
+    reference = "今 天 天 气 很 好"
+    hypothesis = "今 天 天 天 很 号"
+
+    print("=== 编辑距离文本对齐演示 ===")
+    print()
+
+    # 使用print_alignment_demo方法打印对齐结果
+    aligner.print_alignment_demo(reference, hypothesis)
+
+    print()
+    print("=== 详细对齐信息 ===")
+    result = aligner.generate_diff_report(reference, hypothesis)
+    print(result['formatted_output'])
+
+    return result
+
+
+if __name__ == "__main__":
+    demo_edit_distance_alignment()

@@ -34,6 +34,14 @@ This is an ASR (Automatic Speech Recognition) evaluation framework designed to c
 ### Setup & Installation
 ```bash
 pip install -r requirements.txt
+
+# Initialize Git submodules for model repositories
+git submodule update --init --recursive
+
+# Optional: Install additional text normalization dependencies
+pip install -r requirements-wetextprocessing.txt
+pip install -r requirements-nemo.txt
+pip install -r requirements-japanese.txt
 ```
 
 ### Testing Commands
@@ -42,6 +50,7 @@ pytest tests/                          # Run all tests
 pytest tests/test_filename.py          # Run specific test file
 pytest tests/test_filename.py::test_function_name  # Run specific test
 pytest --cov=. tests/                  # Run with coverage
+pytest -v tests/                       # Verbose output
 ```
 
 ### Model Evaluation Commands
@@ -57,6 +66,9 @@ python main.py --batch test_plan.json --output results/
 
 # Hotword testing
 python main.py --model step_audio2 --dataset hotword --hotword-config config/hotwords.json
+
+# Text alignment and visualization
+python -c "from evaluation.text_alignment import TextAligner, TextDiffVisualizer; aligner = TextAligner(); visualizer = TextDiffVisualizer(); result = aligner.generate_diff_report('reference text', 'hypothesis text'); print(visualizer.side_by_side_diff_from_alignment(result['alignment']))"
 ```
 
 ### Dataset Management
@@ -103,6 +115,8 @@ python -c "from datasets.manager import TestDatasetManager; TestDatasetManager.v
 2. Register model in `models/factory.py` model registry
 3. Add model configuration to `config/config.json`
 4. Add model type to `core/enums.py`
+5. Create model-specific config file in `config/models/[model_name].json`
+6. Add Git submodule if model is external: `git submodule add [repo_url] Model/[ModelName]`
 
 ### Creating Custom Dataset
 1. Prepare audio files with matching .txt transcription files
@@ -120,11 +134,31 @@ python -c "from datasets.manager import TestDatasetManager; TestDatasetManager.v
 2. Implement calculation in `evaluation/metrics.py`
 3. Update reporting in `utils/reporter.py`
 
+### Text Alignment and Visualization
+The system includes Kaldi align-text based text difference visualization:
+- **TextAligner**: Generates detailed alignment reports using Kaldi align-text
+- **TextDiffVisualizer**: Provides word-level text comparison with color coding
+- **Features**: Word-level alignment, substitution/deletion/insertion marking, side-by-side comparison
+
+### Git Submodule Management
+```bash
+# Add new model submodule
+git submodule add [repository_url] Model/[ModelName]
+git submodule update --init --recursive
+
+# Update existing submodules
+git submodule update --remote --merge
+
+# Check submodule status
+git submodule status
+```
+
 ## File Formats Supported
 - **Audio**: wav, mp3, flac, m4a, ogg
 - **Transcriptions**: .txt, .trans files
 - **Results**: JSON, CSV, HTML formats with visualizations
 - **Configuration**: JSON configuration files
+- **Hotword Config**: JSON configuration for hotword testing
 
 ## Results Structure
 Results are organized in timestamped directories under `results/` with:
