@@ -160,6 +160,20 @@ class TextAligner:
         print(f"删除: {stats['deletions']}")
         print(f"插入: {stats['insertions']}")
 
+    def generate_diff_report(self, reference: str, hypothesis: str) -> Dict[str, any]:
+        """生成差异报告"""
+        alignment = self.align_text(reference, hypothesis)
+        stats = self.calculate_error_statistics(alignment)
+        formatted_output = self.format_alignment(alignment)
+
+        return {
+            'alignment': alignment,
+            'statistics': stats,
+            'formatted_output': formatted_output,
+            'reference': reference,
+            'hypothesis': hypothesis
+        }
+
 
 def demo_edit_distance_alignment():
     """演示编辑距离对齐功能"""
