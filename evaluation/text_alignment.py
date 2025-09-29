@@ -62,13 +62,20 @@ class TextAligner:
                 if ref_words[i-1] == hyp_words[j-1]:
                     dp[i][j] = dp[i-1][j-1]
                 else:
-                    dp[i][j] = min(
-                        dp[i-1][j] + 1,    # 删除
-                        dp[i][j-1] + 1,    # 插入
-                        dp[i-1][j-1] + 1   # 替换
-                    )
+                    # 优先删除，插入，再替换
+                    delete_cost = dp[i-1][j] + 1    # 删除
+                    insert_cost = dp[i][j-1] + 1    # 插入
+                    substitute_cost = dp[i-1][j-1] + 1   # 替换
 
-        # 回溯构造对齐结果
+                    # 按优先级选择：删除 > 插入 > 替换
+                    if delete_cost <= insert_cost and delete_cost <= substitute_cost:
+                        dp[i][j] = delete_cost
+                    elif insert_cost <= substitute_cost:
+                        dp[i][j] = insert_cost
+                    else:
+                        dp[i][j] = substitute_cost
+
+        # 回溯构造对齐结果 - 按优先级：删除 > 插入 > 替换
         alignment = []
         i, j = m, n
 
@@ -77,18 +84,15 @@ class TextAligner:
                 alignment.append((ref_words[i-1], hyp_words[j-1]))
                 i -= 1
                 j -= 1
-            elif dp[i][j] == dp[i-1][j-1] + 1:
-                # 替换
-                alignment.append((ref_words[i-1], hyp_words[j-1]))
-                i -= 1
-                j -= 1
-            elif dp[i][j] == dp[i-1][j] + 1:
-                # 删除
+            elif dp[i][j] == dp[i-1][j] + 1:  # 删除优先级最高
                 alignment.append((ref_words[i-1], ""))
                 i -= 1
-            else:
-                # 插入
+            elif dp[i][j] == dp[i][j-1] + 1:  # 插入优先级次高
                 alignment.append(("", hyp_words[j-1]))
+                j -= 1
+            else:  # 替换优先级最低
+                alignment.append((ref_words[i-1], hyp_words[j-1]))
+                i -= 1
                 j -= 1
 
         # 处理剩余部分
@@ -185,14 +189,33 @@ def demo_edit_distance_alignment():
     aligner = TextAligner()
 
     # 示例文本
-    reference = "李太白任事业部经理"
-    hypothesis = "李白任这事业部井里"
+    reference = "刘应章任服务本部经理"
+    hypothesis = "刘应任大服务本部井里"
 
     print("=== 编辑距离文本对齐演示 ===")
     print()
 
     # 使用print_alignment_demo方法打印对齐结果
     aligner.print_alignment_demo(reference, hypothesis)
+
+    print()
+    print("=== 自定义对齐格式 ===")
+    alignment = aligner.align_text(reference, hypothesis)
+
+    # 创建对齐显示
+    ref_aligned = "ref : "
+    hyp_aligned = "hyp : "
+
+    for ref, hyp in alignment:
+        if ref == hyp:  # 匹配
+            ref_aligned += f"{ref} "
+            hyp_aligned += f"{hyp} "
+        else:  # 不匹配（替换或间隙）
+            ref_aligned += f"{ref} " if ref else "** "
+            hyp_aligned += f"{hyp} " if hyp else "** "
+
+    print(ref_aligned.rstrip())
+    print(hyp_aligned.rstrip())
 
     print()
     print("=== 详细对齐信息 ===")
