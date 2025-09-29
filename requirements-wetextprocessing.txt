@@ -1,0 +1,10 @@
+# WeTextProcessing dependencies for advanced Chinese text normalization
+# Install with: pip install -r requirements-wetextprocessing.txt
+
+# WeTextProcessing - Text Normalization and Inverse Text Normalization
+WeTextProcessing>=1.0.0
+
+# Additional dependencies for WeTextProcessing
+pypinyin>=0.47.0
+opencc-python-reimplemented>=0.1.6
+jieba>=0.42.0

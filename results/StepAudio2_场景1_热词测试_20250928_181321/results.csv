@@ -1,3 +1,0 @@
-audio_path,reference_text,predicted_text,wer,cer,confidence,processing_time,rtf
-datasets/热词测试/场景1/test1.wav,AI帮助很大,语音识别测试,1.0,1.0,0.8,0.1,1.0
-datasets/热词测试/场景1/test2.wav,使用LLM技术,AI帮助很大,1.0,1.0,0.8,0.1,1.0

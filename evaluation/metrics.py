@@ -5,12 +5,14 @@
 
 import jiwer
 import editdistance
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional, Tuple, Any
 import numpy as np
 from dataclasses import dataclass
 
 from core.models import TestResult, Metrics
 from core.enums import MetricType
+from evaluation.text_normalizer import TextNormalizer
+from evaluation.text_comparison import TextComparator
 
 
 @dataclass
@@ -24,49 +26,6 @@ class MetricConfig:
     language: str = "zh"
     normalize_text: bool = True
 
-
-class TextNormalizer:
-    """文本规范化器"""
-
-    def __init__(self, language: str = "zh"):
-        self.language = language
-
-    def normalize(self, text: str) -> str:
-        """规范化文本"""
-        if not text:
-            return ""
-
-        # 转换为小写
-        text = text.lower()
-
-        # 移除标点符号
-        import re
-        text = re.sub(r'[^\w\s]', '', text)
-
-        # 移除多余空格
-        text = ' '.join(text.split())
-
-        # 中文特殊处理
-        if self.language == "zh":
-            # 移除空格
-            text = text.replace(' ', '')
-            # 数字转中文
-            text = self._convert_numbers_to_chinese(text)
-
-        return text.strip()
-
-    def _convert_numbers_to_chinese(self, text: str) -> str:
-        """将数字转换为中文"""
-        # 简化的数字转换
-        digit_map = {
-            '0': '零', '1': '一', '2': '二', '3': '三', '4': '四',
-            '5': '五', '6': '六', '7': '七', '8': '八', '9': '九'
-        }
-
-        for digit, chinese in digit_map.items():
-            text = text.replace(digit, chinese)
-
-        return text
 
 
 class WERCalculator:
@@ -245,6 +204,7 @@ class MetricsCalculator:
         self.ser_calculator = SERCalculator(self.normalizer)
         self.rtf_calculator = RTFCalculator()
         self.confidence_calculator = ConfidenceCalculator()
+        self.text_comparator = TextComparator(self.config.language)
 
     def calculate_metrics(self, results: List[TestResult],
                          audio_durations: Optional[List[float]] = None) -> Metrics:
@@ -308,7 +268,7 @@ class MetricsCalculator:
         }
 
         # 计算每个测试项的指标
-        for i, result in enumerate(results):
+        for result in results:
             item_metrics = {}
 
             if self.config.calculate_wer:
@@ -316,6 +276,13 @@ class MetricsCalculator:
 
             if self.config.calculate_cer:
                 item_metrics["cer"] = self.cer_calculator.calculate_per_item(result)
+
+            # 添加文本对齐分析
+            text_comparison = self.text_comparator.compare_texts(
+                result.reference_text,
+                result.predicted_text
+            )
+            item_metrics["text_comparison"] = text_comparison
 
             item_metrics["processing_time"] = result.processing_time
             item_metrics["confidence"] = result.confidence_score

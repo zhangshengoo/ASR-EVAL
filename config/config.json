@@ -57,7 +57,12 @@
     "calculate_rtf": true,
     "calculate_confidence": true,
     "language": "zh",
-    "normalize_text": true
+    "normalize_text": true,
+    "text_normalization": {
+      "use_wetextprocessing": false,
+      "use_nemo": false,
+      "supported_languages": ["zh", "en", "ja"]
+    }
   },
   "output": {
     "save_detailed_results": true,

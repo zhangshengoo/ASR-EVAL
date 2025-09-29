@@ -1,0 +1,12 @@
+# Japanese text processing dependencies
+# Install with: pip install -r requirements-japanese.txt
+
+# NVIDIA NeMo Text Processing for Japanese
+NeMo-text-processing>=0.1.7
+
+# Japanese text processing
+pyopenjtalk-plus>=0.3.3
+MeCab>=1.0.0
+mecab-python3>=1.0.0
+pykakasi>=2.2.1
+unidic-lite>=1.0.8

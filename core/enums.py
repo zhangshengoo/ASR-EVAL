@@ -41,3 +41,10 @@ class AudioFormat(Enum):
     FLAC = "flac"
     M4A = "m4a"
     OGG = "ogg"
+
+
+class LanguageType(Enum):
+    """支持的语言类型"""
+    ZH = "zh"  # 中文
+    EN = "en"  # 英文
+    JA = "ja"  # 日文

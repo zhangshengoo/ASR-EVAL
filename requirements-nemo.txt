@@ -1,0 +1,10 @@
+# NVIDIA NeMo-text-processing dependencies for English text normalization
+# Install with: pip install -r requirements-nemo.txt
+
+# NVIDIA NeMo Text Processing
+NeMo-text-processing>=0.1.7
+
+# Additional dependencies for NeMo
+inflect>=5.6.0
+regex>=2022.7.9
+pynini>=2.1.5
