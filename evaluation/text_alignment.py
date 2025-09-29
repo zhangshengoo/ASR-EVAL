@@ -24,8 +24,13 @@ class TextAligner:
         Returns:
             对齐结果列表，每个元素是(reference_word, hypothesis_word)对
         """
-        ref_words = reference.split()
-        hyp_words = hypothesis.split()
+        # 处理中文文本 - 按字符分割
+        if any('\u4e00' <= c <= '\u9fff' for c in reference + hypothesis):
+            ref_words = list(reference.replace(' ', ''))
+            hyp_words = list(hypothesis.replace(' ', ''))
+        else:
+            ref_words = reference.split()
+            hyp_words = hypothesis.split()
 
         return self._edit_distance_alignment(ref_words, hyp_words)
 
@@ -180,8 +185,8 @@ def demo_edit_distance_alignment():
     aligner = TextAligner()
 
     # 示例文本
-    reference = "今 天 天 气 很 好"
-    hypothesis = "今 天 天 天 很 号"
+    reference = "李太白任事业部经理"
+    hypothesis = "李白任这事业部井里"
 
     print("=== 编辑距离文本对齐演示 ===")
     print()
