@@ -1,0 +1,104 @@
+{
+  "config_sizes": [
+    3,
+    5,
+    10
+  ],
+  "hotwords": [
+    "AI",
+    "LLM",
+    "AIGC",
+    "ML",
+    "CNN",
+    "GNN",
+    "LSTM",
+    "Transformer",
+    "DeepSeek"
+  ],
+  "samples": [
+    {
+      "filename": "test1",
+      "target_text": "AI帮助很大",
+      "target_hotwords": [
+        "AI"
+      ],
+      "configs": {
+        "lib3": {
+          "hotwords": [
+            "AI",
+            "LLM",
+            "ML"
+          ],
+          "size": 3
+        },
+        "lib5": {
+          "hotwords": [
+            "AI",
+            "CNN",
+            "DeepSeek",
+            "Transformer",
+            "AIGC"
+          ],
+          "size": 5
+        },
+        "full": {
+          "hotwords": [
+            "AI",
+            "LLM",
+            "AIGC",
+            "ML",
+            "CNN",
+            "GNN",
+            "LSTM",
+            "Transformer",
+            "DeepSeek"
+          ],
+          "size": 9
+        }
+      }
+    },
+    {
+      "filename": "test2",
+      "target_text": "使用LLM技术优化AIGC能力",
+      "target_hotwords": [
+        "AI",
+        "LLM",
+        "AIGC"
+      ],
+      "configs": {
+        "lib3": {
+          "hotwords": [
+            "AI",
+            "LLM",
+            "AIGC"
+          ],
+          "size": 3
+        },
+        "lib5": {
+          "hotwords": [
+            "AI",
+            "LLM",
+            "AIGC",
+            "DeepSeek",
+            "ML"
+          ],
+          "size": 5
+        },
+        "full": {
+          "hotwords": [
+            "AI",
+            "LLM",
+            "AIGC",
+            "ML",
+            "CNN",
+            "GNN",
+            "LSTM",
+            "Transformer",
+            "DeepSeek"
+          ],
+          "size": 9
+        }
+      }
+    }
+  ]
+}
