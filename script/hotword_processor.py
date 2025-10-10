@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-可配置热词处理脚本
-支持自定义热词库大小和配置
+通用热词处理脚本
+支持任意目录结构的热词测试数据集处理
 """
 
 import os
@@ -10,30 +10,21 @@ import random
 from pathlib import Path
 
 
-class ConfigurableHotwordProcessor:
-    def __init__(self, base_path: str = None, hotword_file: str = None, dataset_file: str = None):
-        self.base_path = Path(base_path) if base_path else None
-        self.hotword_file = Path(hotword_file) if hotword_file else None
-        self.dataset_file = Path(dataset_file) if dataset_file else None
-        self.hotwords = []
+class HotwordProcessor:
+    """通用热词处理器"""
+
+    def __init__(self, hotwords: list = None):
+        self.hotwords = hotwords or []
         self.samples = []
 
-    def load_data(self, base_path: str = None, hotword_file: str = None, dataset_file: str = None):
-        base_path = Path(base_path) if base_path else self.base_path
-        hotword_file = Path(hotword_file) if hotword_file else self.hotword_file
-        dataset_file = Path(dataset_file) if dataset_file else self.dataset_file
-
-        # 自动检测文件路径
-        if not hotword_file and base_path:
-            hotword_file = base_path / "hotword.txt"
-        if not dataset_file and base_path:
-            dataset_file = next(base_path.glob("*.list"), None)
-
-        # 加载热词
+    def load_hotwords(self, hotword_file: str) -> list:
+        """加载热词文件"""
         with open(hotword_file, 'r', encoding='utf-8') as f:
             self.hotwords = [line.strip() for line in f if line.strip()]
+        return self.hotwords
 
-        # 加载数据集
+    def load_dataset(self, dataset_file: str) -> list:
+        """加载数据集文件"""
         with open(dataset_file, 'r', encoding='utf-8') as f:
             for line in f:
                 if line.strip() and not line.startswith('#'):
@@ -43,9 +34,12 @@ class ConfigurableHotwordProcessor:
                             'filename': Path(parts[0].strip()).stem,
                             'target_text': parts[1].strip()
                         })
+        return self.samples
 
-    def generate_configs(self, sample, config_sizes):
-        target = [hw for hw in self.hotwords if hw.lower() in sample['target_text'].lower()]
+    def generate_configs(self, sample: dict, config_sizes: list) -> dict:
+        """生成热词配置"""
+        target = [hw for hw in self.hotwords
+                 if hw.lower() in sample['target_text'].lower()]
         others = [hw for hw in self.hotwords if hw not in target]
 
         configs = {}
@@ -66,15 +60,22 @@ class ConfigurableHotwordProcessor:
 
         return configs
 
-    def process(self, config_sizes=None, output_file=None, base_path=None):
+    def process_dataset(self, hotword_file: str, dataset_file: str,
+                       config_sizes: list = None, output_file: str = None) -> str:
+        """处理数据集"""
         if config_sizes is None:
             config_sizes = [3, 5, 7, 10]
 
-        self.load_data(base_path)
-        results = []
+        # 加载数据
+        self.load_hotwords(hotword_file)
+        self.load_dataset(dataset_file)
 
+        # 处理样本
+        results = []
         for sample in self.samples:
-            target = [hw for hw in self.hotwords if hw.lower() in sample['target_text'].lower()]
+            target = [hw for hw in self.hotwords
+                     if hw.lower() in sample['target_text'].lower()]
+
             processed = {
                 'filename': sample['filename'],
                 'target_text': sample['target_text'],
@@ -83,16 +84,19 @@ class ConfigurableHotwordProcessor:
             }
             results.append(processed)
 
+        # 生成输出
         output = {
             'config_sizes': config_sizes,
             'hotwords': self.hotwords,
+            'total_samples': len(results),
             'samples': results
         }
 
+        # 保存结果
         if output_file:
             output_path = Path(output_file)
         else:
-            output_path = self.base_path / "hotword_dataset.json" if self.base_path else Path("hotword_dataset.json")
+            output_path = Path(dataset_file).parent / "hotword_dataset.json"
 
         with open(output_path, 'w', encoding='utf-8') as f:
             json.dump(output, f, ensure_ascii=False, indent=2)
@@ -100,17 +104,29 @@ class ConfigurableHotwordProcessor:
         return str(output_path)
 
 
-if __name__ == "__main__":
+def main():
     import sys
+    import argparse
 
-    # 支持命令行参数
-    if len(sys.argv) > 1:
-        base_path = sys.argv[1]
-        config_sizes = [int(x) for x in sys.argv[2:]] if len(sys.argv) > 2 else [3, 5, 10]
-        processor = ConfigurableHotwordProcessor(base_path)
-        result = processor.process(config_sizes)
-    else:
-        processor = ConfigurableHotwordProcessor()
-        result = processor.process([3, 5, 10])
+    parser = argparse.ArgumentParser(description="通用热词处理工具")
+    parser.add_argument("hotword_file", help="热词文件路径")
+    parser.add_argument("dataset_file", help="数据集文件路径(.list)")
+    parser.add_argument("--sizes", nargs="+", type=int, default=[3, 5, 10],
+                       help="热词库大小配置 (默认: 3 5 10)")
+    parser.add_argument("--output", help="输出文件路径")
+
+    args = parser.parse_args()
+
+    processor = HotwordProcessor()
+    result = processor.process_dataset(
+        args.hotword_file,
+        args.dataset_file,
+        args.sizes,
+        args.output
+    )
 
     print(result)
+
+
+if __name__ == "__main__":
+    main()

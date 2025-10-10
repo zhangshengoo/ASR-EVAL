@@ -5,28 +5,62 @@
 
 from typing import Optional, Dict, Any
 import re
+from langdetect import detect, LangDetectError
 
 
 class TextNormalizer:
     """多语言文本规范化器"""
 
-    def __init__(self, language: str = "zh", use_wetextprocessing: bool = True, use_nemo: bool = True):
-        self.language = language.lower()
-        self.use_wetextprocessing = use_wetextprocessing and language.lower() == "zh"
-        self.use_nemo = use_nemo and language.lower() in ["en", "ja", "jp"]
+    def __init__(self, language: Optional[str] = None, use_wetextprocessing: bool = True, use_nemo: bool = True):
+        self.use_wetextprocessing = use_wetextprocessing
+        self.use_nemo = use_nemo
         self._chinese_normalizer = None
         self._english_normalizer = None
         self._japanese_normalizer = None
         self._japanese_processor = None
 
+        # 如果未指定语言，初始化为None，将在normalize时自动检测
+        if language:
+            self.language = language.lower()
+            self._initialize_normalizers()
+        else:
+            self.language = None
+
+    def _initialize_normalizers(self):
+        """根据当前语言初始化对应的规范化器"""
+        self.use_wetextprocessing = self.use_wetextprocessing and self.language == "zh"
+        self.use_nemo = self.use_nemo and self.language in ["en", "ja", "jp"]
+
         if self.use_wetextprocessing:
             self._init_chinese_normalizer()
         if self.use_nemo:
-            if language.lower() == "en":
+            if self.language == "en":
                 self._init_english_normalizer()
-            elif language.lower() in ["ja", "jp"]:
+            elif self.language in ["ja", "jp"]:
                 self._init_japanese_normalizer()
                 self._init_japanese_processor()
+
+    def _detect_language(self, text: str) -> str:
+        """自动检测文本语言"""
+        try:
+            detected_lang = detect(text)
+            # 映射检测结果到支持的语言代码
+            lang_map = {
+                'zh': 'zh', 'zh-cn': 'zh', 'zh-tw': 'zh',
+                'en': 'en',
+                'ja': 'ja', 'jp': 'ja'
+            }
+            return lang_map.get(detected_lang, 'generic')
+        except LangDetectError:
+            # 如果检测失败，根据字符特征进行简单判断
+            if re.search(r'[\u4e00-\u9fff]', text):
+                return 'zh'
+            elif re.search(r'[\u3040-\u309f\u30a0-\u30ff]', text):
+                return 'ja'
+            elif re.search(r'[a-zA-Z]', text):
+                return 'en'
+            else:
+                return 'generic'
 
     def _init_chinese_normalizer(self):
         """初始化WeTextProcessing中文规范化器"""
@@ -74,6 +108,12 @@ class TextNormalizer:
         """规范化文本，根据语言选择不同策略"""
         if not text:
             return ""
+
+        # 如果未指定语言，自动检测
+        if self.language is None:
+            detected_lang = self._detect_language(text)
+            self.language = detected_lang
+            self._initialize_normalizers()
 
         # 根据语言选择规范化策略
         if self.language == "zh":
@@ -247,19 +287,14 @@ class TextNormalizer:
             # 如果pykakasi不可用，返回原文
             return text
 
-    def set_language(self, language: str):
-        """设置语言"""
-        self.language = language.lower()
-        self.use_wetextprocessing = self.use_wetextprocessing and self.language == "zh"
-        self.use_nemo = self.use_nemo and self.language in ["en", "ja", "jp"]
+    def set_language(self, language: Optional[str] = None):
+        """设置语言，如果为None则启用自动检测"""
+        if language is None:
+            self.language = None
+            return
 
-        if self.use_wetextprocessing and not self._chinese_normalizer:
-            self._init_chinese_normalizer()
-        if self.use_nemo and not self._english_normalizer and language.lower() == "en":
-            self._init_english_normalizer()
-        if self.use_nemo and not self._japanese_normalizer and language.lower() in ["ja", "jp"]:
-            self._init_japanese_normalizer()
-            self._init_japanese_processor()
+        self.language = language.lower()
+        self._initialize_normalizers()
 
     def get_supported_languages(self) -> list[str]:
         """获取支持的语言列表"""
@@ -269,7 +304,9 @@ class TextNormalizer:
         """获取当前配置"""
         return {
             "language": self.language,
+            "auto_detect": self.language is None,
             "use_wetextprocessing": self.use_wetextprocessing,
             "use_nemo": self.use_nemo,
-            "supported_languages": self.get_supported_languages()
+            "supported_languages": self.get_supported_languages(),
+            "langdetect_available": True
         }

@@ -37,14 +37,15 @@ def setup_logging(config: dict):
 def main():
     """主函数"""
     parser = argparse.ArgumentParser(description="ASR模型测试系统")
-    parser.add_argument("--config", "-c", default="config/config.json", help="配置文件路径")
-    parser.add_argument("--model", "-m", action="append", help="指定测试的模型类型")
-    parser.add_argument("--dataset", "-d", action="append", help="指定测试的数据集类型")
-    parser.add_argument("--max-samples", "-n", type=int, help="最大测试样本数")
+    parser.add_argument("--config", "-c", default="config/config.json", help="配置路径")
+    parser.add_argument("--model", "-m", action="append", help="模型类型")
+    parser.add_argument("--dataset", "-d", action="append", help="数据集类型")
+    parser.add_argument("--max-samples", "-n", type=int, help="最大样本数")
     parser.add_argument("--output", "-o", help="输出目录")
-    parser.add_argument("--compare", action="store_true", help="运行对比测试")
-    parser.add_argument("--batch", help="批量测试计划文件")
-    parser.add_argument("--create-sample-data", action="store_true", help="创建示例数据集")
+    parser.add_argument("--compare", action="store_true", help="对比测试")
+    parser.add_argument("--batch", help="批量测试文件")
+    parser.add_argument("--create-sample-data", action="store_true", help="创建示例数据")
+    parser.add_argument("--hotword", help="热词测试场景", choices=["场景1", "场景2", "场景3"])
 
     args = parser.parse_args()
 
