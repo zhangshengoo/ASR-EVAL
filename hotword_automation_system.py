@@ -425,13 +425,11 @@ class HotwordAutomationSystem:
 
         return report
 
-    def save_results(self, results: Dict[str, List[HotwordTestResult]],
-                    report: Dict[str, Any], output_path: str):
+    def save_results(self, report: Dict[str, Any], output_path: str):
         """
         保存测试结果
 
         Args:
-            results: 原始结果
             report: 测试报告
             output_path: 输出路径
         """
@@ -525,7 +523,7 @@ def main():
     report = test_system.generate_test_report(results)
 
     # 保存结果
-    test_system.save_results(results, report, args.output)
+    test_system.save_results(report, args.output)
 
     # 打印摘要
     print("\n=== 测试完成 ===")
