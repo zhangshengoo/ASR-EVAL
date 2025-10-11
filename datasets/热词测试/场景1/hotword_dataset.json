@@ -26,34 +26,20 @@
         "lib3": {
           "hotwords": [
             "AI",
-            "LLM",
-            "ML"
+            "LSTM",
+            "GNN"
           ],
           "size": 3
         },
         "lib5": {
           "hotwords": [
             "AI",
-            "CNN",
-            "DeepSeek",
+            "AIGC",
             "Transformer",
-            "AIGC"
+            "ML",
+            "LSTM"
           ],
           "size": 5
-        },
-        "full": {
-          "hotwords": [
-            "AI",
-            "LLM",
-            "AIGC",
-            "ML",
-            "CNN",
-            "GNN",
-            "LSTM",
-            "Transformer",
-            "DeepSeek"
-          ],
-          "size": 9
         }
       }
     },
@@ -79,24 +65,10 @@
             "AI",
             "LLM",
             "AIGC",
-            "DeepSeek",
-            "ML"
+            "LSTM",
+            "CNN"
           ],
           "size": 5
-        },
-        "full": {
-          "hotwords": [
-            "AI",
-            "LLM",
-            "AIGC",
-            "ML",
-            "CNN",
-            "GNN",
-            "LSTM",
-            "Transformer",
-            "DeepSeek"
-          ],
-          "size": 9
         }
       }
     }

@@ -1,2 +1,9 @@
 AI
 LLM
+AIGC
+ML
+CNN
+GNN
+LSTM
+Transformer
+DeepSeek

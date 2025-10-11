@@ -1,0 +1,99 @@
+{
+  "models": {
+    "step_audio2": {
+      "model_path": "Step-Audio-2-mini",
+      "device": "cuda",
+      "parallel_enabled": true,
+      "num_processes": 4,
+      "available_gpus": [0, 1],
+      "batch_size": 2,
+      "max_new_tokens": 256,
+      "temperature": 0.7,
+      "repetition_penalty": 1.05,
+      "top_p": 0.9,
+      "do_sample": true
+    },
+    "kimi_audio": {
+      "model_path": "KimiAudio",
+      "device": "cuda",
+      "parallel_enabled": true,
+      "num_processes": 2,
+      "available_gpus": [0, 1],
+      "batch_size": 4
+    },
+    "fire_red_asr": {
+      "model_path": "FireRedASR",
+      "device": "cuda",
+      "parallel_enabled": true,
+      "num_processes": 2,
+      "available_gpus": [0, 1],
+      "batch_size": 4
+    }
+  },
+  "datasets": [
+    "/Users/zhangsheng/code/ASR-Eval/datasets/热词测试/场景1",
+    "/Users/zhangsheng/code/ASR-Eval/datasets/热词测试/场景2",
+    "/Users/zhangsheng/code/ASR-Eval/datasets/热词测试/场景3"
+  ],
+  "test_settings": {
+    "parallel_enabled": true,
+    "num_processes": 4,
+    "available_gpus": [0, 1],
+    "batch_size": 2,
+    "max_workers": 8,
+    "timeout": 300
+  },
+  "text_processing": {
+    "normalization": {
+      "enabled": true,
+      "language": "auto",
+      "use_wetextprocessing": true,
+      "use_nemo": true
+    },
+    "alignment": {
+      "enabled": true,
+      "method": "kaldi_align_text",
+      "detailed_output": true
+    }
+  },
+  "evaluation": {
+    "hotword_metrics": {
+      "matching_strictness": "exact",
+      "case_sensitive": false,
+      "allow_partial_matches": false
+    },
+    "text_metrics": {
+      "calculate_wer": true,
+      "calculate_cer": true,
+      "calculate_similarity": true
+    }
+  },
+  "output": {
+    "format": "json",
+    "detailed": true,
+    "save_csv": true,
+    "save_html": true,
+    "output_path": "results/hotword_tests",
+    "timestamp_format": "%Y%m%d_%H%M%S"
+  },
+  "hotword_configurations": {
+    "lib3": {
+      "size": 3,
+      "description": "小型热词库"
+    },
+    "lib5": {
+      "size": 5,
+      "description": "中型热词库"
+    },
+    "lib10": {
+      "size": 10,
+      "description": "大型热词库"
+    }
+  },
+  "performance_settings": {
+    "memory_limit_gb": 16,
+    "gpu_memory_fraction": 0.8,
+    "cpu_affinity": false,
+    "enable_memory_monitoring": true
+  }
+}

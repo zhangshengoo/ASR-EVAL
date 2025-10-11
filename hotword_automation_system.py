@@ -1,0 +1,558 @@
+"""
+热词自动化测试系统
+整合不同ASR模型、文本处理和评估工具，实现热词召回率和准确率的自动化测试
+"""
+
+import json
+import os
+import time
+from pathlib import Path
+from typing import Dict, List, Any, Optional
+from dataclasses import dataclass
+import multiprocessing as mp
+
+from models.factory import ModelFactory
+from models.base import BaseASRModel
+from core.enums import ModelType
+from evaluation.text_normalizer import TextNormalizer
+from evaluation.text_alignment import TextAligner
+from evaluation.hotword_metrics import HotwordMetricsCalculator
+
+
+@dataclass
+class HotwordTestSample:
+    """热词测试样本"""
+    filename: str
+    target_text: str
+    target_hotwords: List[str]
+    configs: Dict[str, Dict[str, Any]]  # 不同热词库配置
+    audio_path: Optional[str] = None
+
+
+@dataclass
+class HotwordTestResult:
+    """热词测试结果"""
+    sample_id: str
+    model_name: str
+    config_name: str
+    hotword_library: List[str]
+    target_text: str
+    predicted_text: str
+    normalized_target: str
+    normalized_predicted: str
+    recall: float
+    precision: float
+    f1_score: float
+    processing_time: float
+    alignment_details: Dict[str, Any]
+    hotword_matches: Dict[str, Dict[str, int]]
+
+
+class HotwordAutomationSystem:
+    """热词自动化测试系统"""
+
+    def __init__(self, config_path: str = "config/hotword_test_config.json"):
+        """
+        初始化热词自动化测试系统
+
+        Args:
+            config_path: 配置文件路径
+        """
+        self.config = self._load_config(config_path)
+        self.model_factory = ModelFactory()
+        self.text_normalizer = TextNormalizer()
+        self.text_aligner = TextAligner()
+        self.hotword_metrics = HotwordMetricsCalculator()
+        self.results_cache = {}
+
+    def _load_config(self, config_path: str) -> Dict[str, Any]:
+        """加载配置文件"""
+        try:
+            with open(config_path, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except FileNotFoundError:
+            # 创建默认配置
+            default_config = {
+                "models": ["step_audio2", "kimi_audio", "fire_red_asr"],
+                "datasets": ["/Users/zhangsheng/code/ASR-Eval/datasets/热词测试/场景1"],
+                "parallel_enabled": True,
+                "num_processes": 4,
+                "available_gpus": [0, 1],
+                "batch_size": 2,
+                "text_normalization": {
+                    "enabled": True,
+                    "language": "auto"
+                },
+                "output_format": "json",
+                "output_path": "results/hotword_tests"
+            }
+            return default_config
+
+    def load_hotword_dataset(self, dataset_path: str) -> List[HotwordTestSample]:
+        """
+        加载热词测试数据集
+
+        Args:
+            dataset_path: 数据集路径
+
+        Returns:
+            热词测试样本列表
+        """
+        dataset_file = Path(dataset_path) / "hotword_dataset.json"
+        if not dataset_file.exists():
+            raise FileNotFoundError(f"热词数据集文件不存在: {dataset_file}")
+
+        with open(dataset_file, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+
+        samples = []
+        for sample_data in data.get("samples", []):
+            # 构建音频文件完整路径
+            audio_path = str(Path(dataset_path) / f"{sample_data['filename']}.wav")
+            if not os.path.exists(audio_path):
+                print(f"警告: 音频文件不存在: {audio_path}")
+                continue
+
+            sample = HotwordTestSample(
+                filename=sample_data["filename"],
+                target_text=sample_data["target_text"],
+                target_hotwords=sample_data["target_hotwords"],
+                configs=sample_data.get("configs", {}),
+                audio_path=audio_path
+            )
+            samples.append(sample)
+
+        return samples
+
+    def initialize_models(self, model_configs: Dict[str, Dict[str, Any]]) -> Dict[str, BaseASRModel]:
+        """
+        初始化多个ASR模型
+
+        Args:
+            model_configs: 模型配置字典
+
+        Returns:
+            初始化好的模型字典
+        """
+        models = {}
+
+        for model_name, config in model_configs.items():
+            try:
+                print(f"正在初始化模型: {model_name}")
+                model_type = ModelType(model_name)
+                model = self.model_factory.create_model(model_type, config)
+
+                if model.load_model():
+                    models[model_name] = model
+                    print(f"模型 {model_name} 加载成功")
+                else:
+                    print(f"模型 {model_name} 加载失败")
+
+            except Exception as e:
+                print(f"模型 {model_name} 初始化失败: {e}")
+
+        return models
+
+    def process_with_text_normalization(self, text: str, language: str = "auto") -> str:
+        """
+        使用文本规范化处理
+
+        Args:
+            text: 原始文本
+            language: 语言代码
+
+        Returns:
+            规范化后的文本
+        """
+        if not self.config.get("text_normalization", {}).get("enabled", True):
+            return text
+
+        try:
+            if language != "auto":
+                self.text_normalizer.set_language(language)
+            return self.text_normalizer.normalize(text)
+        except Exception as e:
+            print(f"文本规范化失败: {e}")
+            return text
+
+    def perform_text_alignment(self, target_text: str, predicted_text: str) -> Dict[str, Any]:
+        """
+        执行文本对齐
+
+        Args:
+            target_text: 目标文本
+            predicted_text: 预测文本
+
+        Returns:
+            对齐结果详情
+        """
+        try:
+            alignment_result = self.text_aligner.generate_diff_report(target_text, predicted_text)
+            return {
+                "alignment": alignment_result.get("alignment", []),
+                "differences": alignment_result.get("differences", {}),
+                "similarity_score": alignment_result.get("similarity_score", 0.0)
+            }
+        except Exception as e:
+            print(f"文本对齐失败: {e}")
+            return {"alignment": [], "differences": {}, "similarity_score": 0.0}
+
+    def test_single_sample(self, model: BaseASRModel, sample: HotwordTestSample,
+                          config_name: str, hotword_library: List[str]) -> HotwordTestResult:
+        """
+        测试单个样本
+
+        Args:
+            model: ASR模型
+            sample: 测试样本
+            config_name: 配置名称
+            hotword_library: 热词库
+
+        Returns:
+            测试结果
+        """
+        start_time = time.time()
+
+        try:
+            # 设置热词库（如果模型支持）
+            if hasattr(model, 'set_hotwords'):
+                model.set_hotwords(hotword_library)
+
+            # 执行ASR推理
+            result = model.transcribe_audio(sample.audio_path)
+            predicted_text = result.get("text", "")
+            processing_time = result.get("processing_time", time.time() - start_time)
+
+            # 文本规范化 - 使用自动语言检测
+            normalized_target = self.process_with_text_normalization(sample.target_text, language="auto")
+            normalized_predicted = self.process_with_text_normalization(predicted_text, language="auto")
+
+            # 设置热词计算器
+            self.hotword_metrics.load_hotwords(hotword_library)
+
+            # 计算热词指标 - 使用原始文本进行计算（热词计算器内部会处理规范化）
+            metrics = self.hotword_metrics.calculate_metrics(
+                sample.target_text, predicted_text
+            )
+
+            # 执行文本对齐
+            alignment_details = self.perform_text_alignment(normalized_target, normalized_predicted)
+
+            # 直接使用metrics中的结果
+            recall = metrics.get("recall", 0.0)
+            precision = metrics.get("precision", 0.0)
+            f1_score = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0.0
+
+            # 简化热词匹配详情，直接使用计算结果
+            hotword_matches = {
+                "overall": {
+                    "recall": recall,
+                    "precision": precision,
+                    "f1_score": f1_score
+                }
+            }
+
+            return HotwordTestResult(
+                sample_id=sample.filename,
+                model_name=model.model_name,
+                config_name=config_name,
+                hotword_library=hotword_library,
+                target_text=sample.target_text,
+                predicted_text=predicted_text,
+                normalized_target=normalized_target,
+                normalized_predicted=normalized_predicted,
+                recall=recall,
+                precision=precision,
+                f1_score=f1_score,
+                processing_time=processing_time,
+                alignment_details=alignment_details,
+                hotword_matches=hotword_matches
+            )
+
+        except Exception as e:
+            print(f"测试样本 {sample.filename} 失败: {e}")
+            import traceback
+            traceback.print_exc()
+            return HotwordTestResult(
+                sample_id=sample.filename,
+                model_name=getattr(model, 'model_name', 'unknown'),
+                config_name=config_name,
+                hotword_library=hotword_library,
+                target_text=sample.target_text,
+                predicted_text="",
+                normalized_target="",
+                normalized_predicted="",
+                recall=0.0,
+                precision=0.0,
+                f1_score=0.0,
+                processing_time=time.time() - start_time,
+                alignment_details={},
+                hotword_matches={"overall": {"recall": 0.0, "precision": 0.0, "f1_score": 0.0}}
+            )
+
+
+    def run_automated_tests(self, models: Dict[str, BaseASRModel],
+                          dataset_path: str) -> Dict[str, List[HotwordTestResult]]:
+        """
+        运行自动化测试
+
+        Args:
+            models: 模型字典
+            dataset_path: 数据集路径
+
+        Returns:
+            测试结果字典
+        """
+        print("开始热词自动化测试...")
+
+        # 加载数据集
+        samples = self.load_hotword_dataset(dataset_path)
+        print(f"加载了 {len(samples)} 个测试样本")
+
+        all_results = {}
+
+        # 遍历每个模型
+        for model_name, model in models.items():
+            print(f"\n测试模型: {model_name}")
+            model_results = []
+
+            # 遍历每个样本
+            for sample in samples:
+                # 遍历每个热词库配置
+                for config_name, config_data in sample.configs.items():
+                    hotword_library = config_data.get("hotwords", [])
+
+                    print(f"  样本: {sample.filename}, 配置: {config_name}, 热词数: {len(hotword_library)}")
+
+                    # 执行测试
+                    result = self.test_single_sample(
+                        model, sample, config_name, hotword_library
+                    )
+                    model_results.append(result)
+
+            all_results[model_name] = model_results
+
+        return all_results
+
+    def run_parallel_tests(self, models: Dict[str, BaseASRModel],
+                          dataset_path: str) -> Dict[str, List[HotwordTestResult]]:
+        """
+        运行并行化测试（如果模型支持）
+
+        Args:
+            models: 模型字典
+            dataset_path: 数据集路径
+
+        Returns:
+            测试结果字典
+        """
+        print("开始并行化热词测试...")
+
+        samples = self.load_hotword_dataset(dataset_path)
+        print(f"加载了 {len(samples)} 个测试样本")
+
+        all_results = {}
+
+        # 为每个模型启用并行处理
+        for model_name, model in models.items():
+            if hasattr(model, 'parallel_enabled'):
+                model.parallel_enabled = True
+                model.num_processes = self.config.get("num_processes", mp.cpu_count())
+                model.available_gpus = self.config.get("available_gpus", [0])
+                model.parallel_batch_size = self.config.get("batch_size", 2)
+
+            # 使用模型的并行处理能力
+            model_results = []
+
+            for sample in samples:
+                for config_name, config_data in sample.configs.items():
+                    hotword_library = config_data.get("hotwords", [])
+
+                    # 执行测试
+                    result = self.test_single_sample(
+                        model, sample, config_name, hotword_library
+                    )
+                    model_results.append(result)
+
+            all_results[model_name] = model_results
+
+        return all_results
+
+    def generate_test_report(self, results: Dict[str, List[HotwordTestResult]]) -> Dict[str, Any]:
+        """
+        生成测试报告
+
+        Args:
+            results: 测试结果
+
+        Returns:
+            测试报告
+        """
+        report = {
+            "summary": {},
+            "model_comparison": {},
+            "detailed_results": {},
+            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
+        }
+
+        # 汇总统计
+        total_samples = 0
+        total_tests = 0
+
+        for model_name, model_results in results.items():
+            total_tests += len(model_results)
+            if model_results:
+                total_samples += len(set(r.sample_id for r in model_results))
+
+                # 模型统计
+                avg_recall = sum(r.recall for r in model_results) / len(model_results)
+                avg_precision = sum(r.precision for r in model_results) / len(model_results)
+                avg_f1 = sum(r.f1_score for r in model_results) / len(model_results)
+                avg_time = sum(r.processing_time for r in model_results) / len(model_results)
+
+                report["model_comparison"][model_name] = {
+                    "avg_recall": avg_recall,
+                    "avg_precision": avg_precision,
+                    "avg_f1_score": avg_f1,
+                    "avg_processing_time": avg_time,
+                    "total_tests": len(model_results)
+                }
+
+                # 详细结果
+                report["detailed_results"][model_name] = [
+                    {
+                        "sample_id": r.sample_id,
+                        "config_name": r.config_name,
+                        "hotword_library": r.hotword_library,
+                        "recall": r.recall,
+                        "precision": r.precision,
+                        "f1_score": r.f1_score,
+                        "processing_time": r.processing_time,
+                        "target_text": r.target_text,
+                        "predicted_text": r.predicted_text,
+                        "hotword_matches": r.hotword_matches
+                    }
+                    for r in model_results
+                ]
+
+        report["summary"] = {
+            "total_models": len(results),
+            "total_samples": total_samples,
+            "total_tests": total_tests,
+            "test_timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
+        }
+
+        return report
+
+    def save_results(self, results: Dict[str, List[HotwordTestResult]],
+                    report: Dict[str, Any], output_path: str):
+        """
+        保存测试结果
+
+        Args:
+            results: 原始结果
+            report: 测试报告
+            output_path: 输出路径
+        """
+        os.makedirs(output_path, exist_ok=True)
+
+        # 保存详细结果
+        results_file = os.path.join(output_path, "hotword_test_results.json")
+        with open(results_file, 'w', encoding='utf-8') as f:
+            json.dump(report, f, ensure_ascii=False, indent=2)
+
+        # 保存CSV格式（便于分析）
+        csv_file = os.path.join(output_path, "hotword_test_results.csv")
+        self._save_csv_results(report, csv_file)
+
+        print(f"结果已保存到: {output_path}")
+
+    def _save_csv_results(self, report: Dict[str, Any], csv_file: str):
+        """保存CSV格式的结果"""
+        import csv
+
+        with open(csv_file, 'w', newline='', encoding='utf-8') as f:
+            writer = csv.writer(f)
+            writer.writerow([
+                "model_name", "sample_id", "config_name", "recall",
+                "precision", "f1_score", "processing_time", "target_text", "predicted_text"
+            ])
+
+            for model_name, results in report["detailed_results"].items():
+                for result in results:
+                    writer.writerow([
+                        model_name,
+                        result["sample_id"],
+                        result["config_name"],
+                        result["recall"],
+                        result["precision"],
+                        result["f1_score"],
+                        result["processing_time"],
+                        result["target_text"],
+                        result["predicted_text"]
+                    ])
+
+
+def main():
+    """主函数 - 热词自动化测试"""
+    import argparse
+
+    parser = argparse.ArgumentParser(description="热词自动化测试系统")
+    parser.add_argument("--config", default="config/hotword_test_config.json",
+                       help="配置文件路径")
+    parser.add_argument("--dataset", default="/Users/zhangsheng/code/ASR-Eval/datasets/热词测试/场景1",
+                       help="数据集路径")
+    parser.add_argument("--models", nargs="+",
+                       default=["step_audio2", "kimi_audio", "fire_red_asr"],
+                       help="要测试的模型列表")
+    parser.add_argument("--parallel", action="store_true",
+                       help="启用并行处理")
+    parser.add_argument("--output", default="results/hotword_tests",
+                       help="输出路径")
+
+    args = parser.parse_args()
+
+    # 创建测试系统
+    test_system = HotwordAutomationSystem(args.config)
+
+    # 准备模型配置
+    model_configs = {}
+    for model_name in args.models:
+        model_configs[model_name] = {
+            "model_path": f"Model/{model_name.title().replace('_', '')}",
+            "device": "cuda",
+            "parallel_enabled": args.parallel,
+            "num_processes": 4,
+            "available_gpus": [0, 1]  # 简化为固定配置
+        }
+
+    # 初始化模型
+    print("正在初始化模型...")
+    models = test_system.initialize_models(model_configs)
+
+    if not models:
+        print("没有成功加载的模型，测试终止")
+        return
+
+    # 运行测试
+    if args.parallel:
+        results = test_system.run_parallel_tests(models, args.dataset)
+    else:
+        results = test_system.run_automated_tests(models, args.dataset)
+
+    # 生成报告
+    report = test_system.generate_test_report(results)
+
+    # 保存结果
+    test_system.save_results(results, report, args.output)
+
+    # 打印摘要
+    print("\n=== 测试完成 ===")
+    print(f"测试模型: {list(results.keys())}")
+    print(f"总测试数: {report['summary']['total_tests']}")
+    print(f"平均召回率: {sum(m['avg_recall'] for m in report['model_comparison'].values()) / len(report['model_comparison']):.3f}")
+    print(f"平均精确率: {sum(m['avg_precision'] for m in report['model_comparison'].values()) / len(report['model_comparison']):.3f}")
+
+
+if __name__ == "__main__":
+    main()
