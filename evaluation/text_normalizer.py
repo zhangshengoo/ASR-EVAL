@@ -5,6 +5,7 @@
 
 from typing import Optional, Dict, Any
 import re
+from jiwer.transforms import Compose, ToLowerCase, RemovePunctuation
 
 
 class TextNormalizer:
@@ -16,9 +17,18 @@ class TextNormalizer:
         self._english_normalizer = None
         self._japanese_normalizer = None
         self._japanese_processor = None
+        self._jiwer_transforms = None
 
         if self.language:
             self._initialize_normalizers()
+        self._init_jiwer_transforms()
+
+    def _init_jiwer_transforms(self):
+        """初始化jiwer transforms用于中英文处理"""
+        self._jiwer_transforms = Compose([
+            ToLowerCase(),
+            RemovePunctuation()
+        ])
 
     def _initialize_normalizers(self):
         """根据当前语言初始化对应的规范化器"""
@@ -101,7 +111,7 @@ class TextNormalizer:
             return self._normalize_generic(text)
 
     def _normalize_chinese(self, text: str) -> str:
-        """中文文本规范化"""
+        """中文文本规范化 - 集成jiwer transforms"""
         text = text.strip()
         if not text:
             return ""
@@ -112,10 +122,15 @@ class TextNormalizer:
 
         # 基础清理
         text = self._basic_chinese_clean(text)
+
+        # 应用jiwer transforms - 中文也适用部分规则
+        if self._jiwer_transforms:
+            text = self._jiwer_transforms(text)
+
         return text
 
     def _normalize_english(self, text: str) -> str:
-        """英文文本规范化"""
+        """英文文本规范化 - 集成jiwer transforms"""
         text = text.strip()
         if not text:
             return ""
@@ -124,7 +139,11 @@ class TextNormalizer:
         if self._english_normalizer:
             text = self._english_normalizer['tn'].normalize(text, verbose=False)
 
-        # 基础清理
+        # 应用jiwer transforms - 英文处理的核心
+        if self._jiwer_transforms:
+            text = self._jiwer_transforms(text)
+
+        # 基础清理（jiwer已处理部分，但保留额外清理）
         text = self._basic_english_clean(text)
         return text
 
@@ -157,21 +176,21 @@ class TextNormalizer:
         return text
 
     def _basic_chinese_clean(self, text: str) -> str:
-        """基础中文清理"""
-        # 移除空格
+        """基础中文清理 - jiwer处理后简化清理"""
+        # jiwer已处理标点，这里主要处理中文特有字符
+        # 移除空格（中文通常不需要）
         text = text.replace(' ', '')
-        # 移除英文和标点
-        text = re.sub(r'[a-zA-Z0-9\W]', '', text)
+        # 移除数字（如果需要保留数字可注释此行）
+        text = re.sub(r'[0-9]', '', text)
         return text
 
     def _basic_english_clean(self, text: str) -> str:
-        """基础英文清理"""
-        # 转换为小写
-        text = text.lower()
+        """基础英文清理 - jiwer处理后简化清理"""
+        # jiwer已处理小写转换和标点移除，这里主要做空格标准化
         # 标准化空格
         text = ' '.join(text.split())
-        # 移除特殊字符但保留字母数字
-        text = re.sub(r'[^\w\s]', '', text)
+        # 确保文本干净（jiwer可能未处理的边界情况）
+        text = text.strip()
         return text
 
     def _process_japanese_text(self, text: str) -> str:
@@ -228,6 +247,7 @@ class TextNormalizer:
 
         self.language = language.lower()
         self._initialize_normalizers()
+        self._init_jiwer_transforms()
 
     def get_supported_languages(self) -> list[str]:
         """获取支持的语言列表"""
