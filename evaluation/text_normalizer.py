@@ -5,6 +5,7 @@
 
 from typing import Optional, Dict, Any
 import re
+from langdetect import detect
 from jiwer.transforms import Compose, ToLowerCase, RemovePunctuation
 
 
@@ -41,13 +42,20 @@ class TextNormalizer:
             self._init_japanese_processor()
 
     def _detect_language(self, text: str) -> str:
-        """自动检测文本语言 - 简化版"""
-        if re.search(r'[\u4e00-\u9fff]', text):
+        """自动检测文本语言 - 使用langdetect库，仅支持中英日三种语言"""
+        if not text.strip():
+            return 'generic'
+
+        # 使用langdetect进行语言检测
+        detected_lang = detect(text)
+
+        # 仅支持中英日三种语言，其他统一归为generic
+        if detected_lang in ['zh', 'zh-cn', 'zh-tw']:
             return 'zh'
-        elif re.search(r'[\u3040-\u309f\u30a0-\u30ff]', text):
-            return 'ja'
-        elif re.search(r'[a-zA-Z]', text):
+        elif detected_lang == 'en':
             return 'en'
+        elif detected_lang == 'ja':
+            return 'ja'
         else:
             return 'generic'
 
