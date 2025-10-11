@@ -14,13 +14,10 @@ import torch
 stepaudio2_path = Path(__file__).parent.parent / "Model" / "StepAudio2"
 sys.path.insert(0, str(stepaudio2_path))
 
-try:
-    from stepaudio2 import StepAudio2 as StepAudio2Core
-    from utils import load_audio, log_mel_spectrogram, padding_mels
-    STEP_AUDIO_AVAILABLE = True
-except ImportError as e:
-    print(f"StepAudio2模型加载失败: {e}")
-    STEP_AUDIO_AVAILABLE = False
+# 直接导入，让ImportError直接抛出
+from stepaudio2 import StepAudio2 as StepAudio2Core
+from utils import load_audio, log_mel_spectrogram, padding_mels
+STEP_AUDIO_AVAILABLE = True
 
 from models.base import BaseASRModel
 from core.models import ModelInfo
@@ -41,9 +38,6 @@ class StepAudio2Model(BaseASRModel):
         self.model = None
         self.sample_rate = 16000
 
-        if not STEP_AUDIO_AVAILABLE:
-            raise RuntimeError("StepAudio2依赖未正确安装或模型文件缺失")
-
     def load_model(self) -> bool:
         """
         加载StepAudio2模型
@@ -51,30 +45,24 @@ class StepAudio2Model(BaseASRModel):
         Returns:
             bool: 加载成功返回True，失败返回False
         """
-        try:
-            # 检查模型路径
-            model_full_path = Path(self.model_path)
-            if not model_full_path.exists():
-                # 尝试相对路径
-                relative_path = Path(__file__).parent.parent / "Model" / "StepAudio2" / self.model_path
-                if relative_path.exists():
-                    model_full_path = relative_path
-                else:
-                    raise FileNotFoundError(f"模型路径不存在: {self.model_path}")
+        # 检查模型路径
+        model_full_path = Path(self.model_path)
+        if not model_full_path.exists():
+            # 尝试相对路径
+            relative_path = Path(__file__).parent.parent / "Model" / "StepAudio2" / self.model_path
+            if relative_path.exists():
+                model_full_path = relative_path
+            else:
+                raise FileNotFoundError(f"模型路径不存在: {self.model_path}")
 
-            print(f"正在加载StepAudio2模型: {model_full_path}")
+        print(f"正在加载StepAudio2模型: {model_full_path}")
 
-            # 初始化模型
-            self.model = StepAudio2Core(str(model_full_path))
-            self.is_loaded = True
+        # 初始化模型
+        self.model = StepAudio2Core(str(model_full_path))
+        self.is_loaded = True
 
-            print("StepAudio2模型加载成功")
-            return True
-
-        except Exception as e:
-            print(f"StepAudio2模型加载失败: {e}")
-            self.is_loaded = False
-            return False
+        print("StepAudio2模型加载成功")
+        return True
 
     def transcribe_audio(self, audio_path: str, **kwargs) -> Dict[str, Any]:
         """
@@ -94,7 +82,74 @@ class StepAudio2Model(BaseASRModel):
         """
         start_time = time.time()
 
-        try:
+        # 构建消息格式
+        messages = [
+            {
+                "role": "system",
+                "content": "You are a helpful assistant. Transcribe the given audio accurately."
+            },
+            {
+                "role": "human",
+                "content": [{"type": "audio", "audio": audio_path}]
+            },
+            {
+                "role": "assistant",
+                "content": None
+            }
+        ]
+
+        # 调用模型进行推理
+        tokens, output_text, _ = self.model(
+            messages,
+            max_new_tokens=kwargs.get("max_new_tokens", 256),
+            temperature=kwargs.get("temperature", 0.7),
+            repetition_penalty=kwargs.get("repetition_penalty", 1.05),
+            top_p=kwargs.get("top_p", 0.9),
+            do_sample=kwargs.get("do_sample", True)
+        )
+
+        processing_time = time.time() - start_time
+
+        # 清理输出文本
+        output_text = self._clean_transcription(output_text)
+
+        return {
+            "text": output_text,
+            "confidence": self._calculate_confidence(tokens),
+            "timestamps": None,  # StepAudio2不直接提供时间戳
+            "processing_time": processing_time,
+            "language": self._detect_language(output_text)
+        }
+
+    def transcribe_audio_batch(self, audio_paths: List[str], _device: str, **kwargs) -> List[Dict[str, Any]]:
+        """
+        批量转录音频文件 - 用于并行处理
+
+        Args:
+            audio_paths: 音频文件路径列表
+            device: 设备标识（如"cuda:0"）
+            **kwargs: 推理参数
+
+        Returns:
+            List[Dict]: 每个音频的转录结果
+        """
+        # 注意：在并行处理中，每个进程会独立加载模型
+        # 所以我们需要在这里重新加载模型到指定的设备
+
+        # 重新导入StepAudio2模块（每个进程需要独立加载）
+        stepaudio2_path = Path(__file__).parent.parent / "Model" / "StepAudio2"
+        sys.path.insert(0, str(stepaudio2_path))
+
+        from stepaudio2 import StepAudio2 as StepAudio2Core
+
+        # 加载模型到指定设备
+        model = StepAudio2Core(str(Path(self.model_path)))
+
+        # 处理音频批次
+        results = []
+        for audio_path in audio_paths:
+            start_time = time.time()
+
             # 构建消息格式
             messages = [
                 {
@@ -112,7 +167,7 @@ class StepAudio2Model(BaseASRModel):
             ]
 
             # 调用模型进行推理
-            tokens, output_text, _ = self.model(
+            tokens, output_text, _ = model(
                 messages,
                 max_new_tokens=kwargs.get("max_new_tokens", 256),
                 temperature=kwargs.get("temperature", 0.7),
@@ -126,126 +181,23 @@ class StepAudio2Model(BaseASRModel):
             # 清理输出文本
             output_text = self._clean_transcription(output_text)
 
-            return {
+            result = {
                 "text": output_text,
                 "confidence": self._calculate_confidence(tokens),
-                "timestamps": None,  # StepAudio2不直接提供时间戳
+                "timestamps": None,
                 "processing_time": processing_time,
-                "language": self._detect_language(output_text)
+                "language": self._detect_language(output_text),
+                "audio_path": audio_path
             }
 
-        except Exception as e:
-            print(f"音频转录失败: {e}")
-            return {
-                "text": "",
-                "confidence": 0.0,
-                "timestamps": None,
-                "processing_time": time.time() - start_time,
-                "language": "unknown"
-            }
+            results.append(result)
 
-    def transcribe_audio_batch(self, audio_paths: List[str], _device: str, **kwargs) -> List[Dict[str, Any]]:
-        """
-        批量转录音频文件 - 用于并行处理
+        # 清理模型资源
+        del model
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
-        Args:
-            audio_paths: 音频文件路径列表
-            device: 设备标识（如"cuda:0"）
-            **kwargs: 推理参数
-
-        Returns:
-            List[Dict]: 每个音频的转录结果
-        """
-        # 注意：在并行处理中，每个进程会独立加载模型
-        # 所以我们需要在这里重新加载模型到指定的设备
-        try:
-            # 重新导入StepAudio2模块（每个进程需要独立加载）
-            stepaudio2_path = Path(__file__).parent.parent / "Model" / "StepAudio2"
-            sys.path.insert(0, str(stepaudio2_path))
-
-            from stepaudio2 import StepAudio2 as StepAudio2Core
-
-            # 加载模型到指定设备
-            model = StepAudio2Core(str(Path(self.model_path)))
-
-            # 处理音频批次
-            results = []
-            for audio_path in audio_paths:
-                start_time = time.time()
-                try:
-                    # 构建消息格式
-                    messages = [
-                        {
-                            "role": "system",
-                            "content": "You are a helpful assistant. Transcribe the given audio accurately."
-                        },
-                        {
-                            "role": "human",
-                            "content": [{"type": "audio", "audio": audio_path}]
-                        },
-                        {
-                            "role": "assistant",
-                            "content": None
-                        }
-                    ]
-
-                    # 调用模型进行推理
-                    tokens, output_text, _ = model(
-                        messages,
-                        max_new_tokens=kwargs.get("max_new_tokens", 256),
-                        temperature=kwargs.get("temperature", 0.7),
-                        repetition_penalty=kwargs.get("repetition_penalty", 1.05),
-                        top_p=kwargs.get("top_p", 0.9),
-                        do_sample=kwargs.get("do_sample", True)
-                    )
-
-                    processing_time = time.time() - start_time
-
-                    # 清理输出文本
-                    output_text = self._clean_transcription(output_text)
-
-                    result = {
-                        "text": output_text,
-                        "confidence": self._calculate_confidence(tokens),
-                        "timestamps": None,
-                        "processing_time": processing_time,
-                        "language": self._detect_language(output_text),
-                        "audio_path": audio_path
-                    }
-
-                except Exception as e:
-                    print(f"音频转录失败: {audio_path}, 错误: {e}")
-                    result = {
-                        "text": "",
-                        "confidence": 0.0,
-                        "timestamps": None,
-                        "processing_time": time.time() - start_time,
-                        "language": "unknown",
-                        "audio_path": audio_path,
-                        "error": str(e)
-                    }
-
-                results.append(result)
-
-            # 清理模型资源
-            del model
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-
-            return results
-
-        except Exception as e:
-            print(f"批处理初始化失败: {e}")
-            # 返回错误结果
-            return [{
-                "text": "",
-                "confidence": 0.0,
-                "timestamps": None,
-                "processing_time": 0.0,
-                "language": "unknown",
-                "audio_path": audio_path,
-                "error": str(e)
-            } for audio_path in audio_paths]
+        return results
 
     def get_model_info(self) -> ModelInfo:
         """获取模型信息"""
