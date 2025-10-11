@@ -14,6 +14,7 @@ import multiprocessing as mp
 from models.factory import ModelFactory
 from models.base import BaseASRModel
 from core.enums import ModelType
+from core.models import ModelConfig
 from evaluation.text_normalizer import TextNormalizer
 from evaluation.text_alignment import TextAligner
 from evaluation.hotword_metrics import HotwordMetricsCalculator
@@ -139,7 +140,24 @@ class HotwordAutomationSystem:
         for model_name, config in model_configs.items():
             print(f"正在初始化模型: {model_name}")
             model_type = ModelType(model_name)
-            model = self.model_factory.create_model(model_type, config)
+
+            # 创建ModelConfig对象
+            model_config = ModelConfig(
+                model_type=model_type,
+                model_path=config.get("model_path", f"Model/{model_name.title().replace('_', '')}"),
+                config_file=config.get("config_file"),
+                device=config.get("device", "cuda"),
+                batch_size=config.get("batch_size", 1),
+                language=config.get("language", "zh"),
+                additional_params={
+                    "parallel_enabled": config.get("parallel_enabled", False),
+                    "num_processes": config.get("num_processes", 4),
+                    "available_gpus": config.get("available_gpus", [0]),
+                    **{k: v for k, v in config.items() if k not in ["model_path", "config_file", "device", "batch_size", "language", "parallel_enabled", "num_processes", "available_gpus"]}
+                }
+            )
+
+            model = self.model_factory.create_model(model_config)
 
             if model.load_model():
                 models[model_name] = model
