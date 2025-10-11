@@ -238,9 +238,6 @@ class HotwordAutomationSystem:
 
             # 从metrics中提取对齐详情，避免重复对齐计算
             alignment_details = metrics.get('alignment_details', {})
-            if not alignment_details:
-                # 如果没有对齐详情，再执行独立的对齐（向后兼容）
-                alignment_details = self.perform_text_alignment(normalized_target, normalized_predicted)
 
             # 直接使用metrics中的结果
             recall = metrics.get("recall", 0.0)
