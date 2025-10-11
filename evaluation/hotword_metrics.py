@@ -19,18 +19,22 @@ class HotwordMetricsCalculator:
         """加载热词列表"""
         self.hotwords = [hw.strip() for hw in hotwords if hw.strip()]
 
-    def calculate_metrics(self, reference: str, hypothesis: str) -> Dict[str, float]:
+    def calculate_metrics(self, reference: str, hypothesis: str, include_alignment: bool = False) -> Dict:
         """
         计算热词召回率和精确率
 
         Args:
             reference: 参考文本
             hypothesis: 预测文本
+            include_alignment: 是否包含对齐详情（可选，保持向后兼容）
 
         Returns:
-            {'recall': float, 'precision': float}
+            {'recall': float, 'precision': float} 或
+            {'recall': float, 'precision': float, 'alignment_details': dict}（如果include_alignment=True）
         """
         if not self.hotwords:
+            if include_alignment:
+                return {'recall': 0.0, 'precision': 0.0, 'alignment_details': {}}
             return {'recall': 0.0, 'precision': 0.0}
 
         # 文本预处理
@@ -38,7 +42,19 @@ class HotwordMetricsCalculator:
         hyp_text = self._normalize_text(hypothesis)
 
         # 基于对齐计算指标
-        return self._calculate_aligned_metrics(ref_text, hyp_text)
+        metrics = self._calculate_aligned_metrics(ref_text, hyp_text)
+
+        if include_alignment:
+            # 获取对齐详情用于外部使用
+            alignment = self._align_text(ref_text, hyp_text)
+            alignment_details = {
+                'alignment': alignment,
+                'reference_text': ref_text,
+                'hypothesis_text': hyp_text
+            }
+            metrics['alignment_details'] = alignment_details
+
+        return metrics
 
     def _normalize_text(self, text: str) -> str:
         """文本规范化"""
