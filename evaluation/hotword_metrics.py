@@ -6,6 +6,7 @@
 
 from typing import List, Dict, Tuple
 from evaluation.text_alignment import TextAligner
+from evaluation.text_normalizer import TextNormalizer
 
 
 class HotwordMetricsCalculator:
@@ -14,6 +15,7 @@ class HotwordMetricsCalculator:
     def __init__(self):
         self.hotwords = []
         self.aligner = TextAligner()
+        self.text_normalizer = TextNormalizer()
 
     def load_hotwords(self, hotwords: List[str]) -> None:
         """加载热词列表"""
@@ -57,8 +59,8 @@ class HotwordMetricsCalculator:
         return metrics
 
     def _normalize_text(self, text: str) -> str:
-        """文本规范化"""
-        return text.lower().strip()
+        """文本规范化 - 使用完整接口"""
+        return self.text_normalizer.normalize(text)
 
     def _calculate_aligned_metrics(self, ref_text: str, hyp_text: str) -> Dict[str, float]:
         """基于对齐结果计算指标"""
@@ -124,14 +126,13 @@ class HotwordMetricsCalculator:
         return pos_map
 
     def _find_occurrences(self, text: str, hotword: str) -> List[int]:
-        """查找热词出现位置"""
+        """查找热词出现位置 - 使用规范化文本"""
         positions = []
-        text_lower = text.lower()
-        hw_lower = hotword.lower()
+        hotword_normalized = self.text_normalizer.normalize(hotword)
         start = 0
 
         while True:
-            pos = text_lower.find(hw_lower, start)
+            pos = text.find(hotword_normalized, start)
             if pos == -1:
                 break
             positions.append(pos)
