@@ -92,13 +92,30 @@ cd /Users/zhangsheng/code/ASR-Eval && python -c "from models.factory import Mode
 4. **无副作用设计**: Prefer pure functions, isolate side effects
 5. **功能接口**: Use Python third-party libraries, update requirements.txt
 
-## Common Pitfalls
+## Common Pitfalls and Solutions
+
+### Model Integration Issues
 - **Model paths**: Always check Model/ submodules are initialized
+- **Import errors**: Ensure model dependencies are installed in correct order
+- **GPU memory**: Adjust batch_size in model config for GPU limits (start with 1, increase gradually)
+- **Model loading failures**: Check device compatibility and CUDA availability
+
+### Text Processing Challenges
 - **Chinese text**: Use TextAligner for proper character-level alignment
-- **Batch processing**: Failed samples don't stop entire batch
-- **GPU memory**: Adjust batch_size in model config for GPU limits
-- **Audio formats**: Framework supports wav/mp3/flac/m4a/ogg
+- **Language detection**: Framework auto-detects language, but can be overridden
+- **Text normalization**: Different normalization libraries for different languages
+- **Character encoding**: Ensure UTF-8 encoding for all text files
+
+### Testing and Evaluation
+- **Batch processing**: Failed samples don't stop entire batch (check logs for failures)
+- **Audio formats**: Framework supports wav/mp3/flac/m4a/ogg (16kHz recommended)
+- **Dataset validation**: Always validate datasets before testing
+- **Result interpretation**: Consider confidence scores alongside error rates
+
+### Git and Submodule Management
 - **Git submodules**: Run `git submodule update --init --recursive` after cloning
+- **Submodule conflicts**: Use `git submodule foreach git pull` to update all
+- **Clean builds**: Remove `__pycache__` and `.pyc` files when switching branches
 
 ## Quick Debugging
 ```bash
@@ -116,6 +133,58 @@ cd /Users/zhangsheng/code/ASR-Eval && python -c "import torch; print('CUDA avail
 
 # Test audio loading
 cd /Users/zhangsheng/code/ASR-Eval && python -c "import librosa; audio, sr = librosa.load('datasets/regression_test/sample.wav', sr=16000); print(f'Audio shape: {audio.shape}, Sample rate: {sr}')"
+
+# Check model configuration
+cd /Users/zhangsheng/code/ASR-Eval && python -c "from utils.config_loader import ConfigLoader; config = ConfigLoader.load_config(); print('Available models:', list(config.get('models', {}).keys()))"
+
+# Test parallel processing setup
+cd /Users/zhangsheng/code/ASR-Eval && python -c "from testing.framework import ASRTestFramework; framework = ASRTestFramework(); print('Parallel workers available:', framework.config.get('max_workers', 'Not set'))"
+
+# Check text alignment accuracy
+cd /Users/zhangsheng/code/ASR-Eval && python -c "from evaluation.text_alignment import TextAligner; aligner = TextAligner(); result = aligner.align_texts('测试文本', '测试文件'); print('Alignment result:', result)"
+
+# Validate hotword configuration
+cd /Users/zhangsheng/code/ASR-Eval && python -c "from evaluation.hotword_metrics import HotwordEvaluator; evaluator = HotwordEvaluator(); print('Hotword libraries available:', evaluator.get_available_libraries())"
+```
+
+## Quick Setup and Installation
+
+```bash
+# Install dependencies
+pip install -r requirements.txt
+
+# For advanced text normalization features:
+pip install -r requirements-wetextprocessing.txt  # Chinese text processing
+pip install -r requirements-nemo.txt              # English/Japanese text processing
+pip install -r requirements-japanese.txt          # Japanese text processing
+
+# Initialize git submodules for models
+git submodule update --init --recursive
+
+# Create sample dataset for testing
+python main.py --create-sample-data
+```
+
+## Advanced Testing Commands
+
+```bash
+# Test with specific GPU device
+CUDA_VISIBLE_DEVICES=1 python main.py --model step_audio2 --dataset regression
+
+# Test with custom config file
+python main.py --config custom_config.json --model kimi_audio --dataset noise
+
+# Test with different batch sizes (for GPU memory optimization)
+python main.py --model fire_red_asr --dataset regression --batch-size 4
+
+# Run hotword detection testing
+python script/hotword_test.py --dataset datasets/热词测试/场景1 --libraries "3,5,10"
+
+# Test text normalization pipeline
+python -c "from evaluation.text_normalizer import TextNormalizer; n = TextNormalizer('zh'); print(n.normalize('２０２４年测试文本'))"
+
+# Validate dataset integrity
+python -c "from datasets.manager import TestDatasetManager; manager = TestDatasetManager(); manager.validate_dataset('datasets/regression_test')"
 ```
 
 ## Project Structure
@@ -127,11 +196,14 @@ evaluation/             # Metrics calculation and text processing
 testing/                # Test framework orchestration
 utils/                  # Utility modules (config, reporting)
 config/                 # Configuration files
+   ├── config.json      # Main configuration
+   └── models/          # Model-specific configurations
 Model/                  # Git submodules for external ASR models
 datasets/               # Test datasets (regression, noise, accent, etc.)
 script/                 # Automation scripts (hotword processing)
 tests/                  # Unit tests
 results/                # Test output directory
+logs/                   # Log files
 ```
 
 

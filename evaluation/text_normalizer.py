@@ -156,17 +156,55 @@ class TextNormalizer:
         return text
 
     def _normalize_japanese(self, text: str) -> str:
-        """日文文本规范化"""
+        """日文文本规范化 - 优化版"""
         text = text.strip()
         if not text:
             return ""
 
-        # 使用NVIDIA NeMo进行TN
+        # 第一步：使用NVIDIA NeMo进行TN
         if self._japanese_normalizer:
             text = self._japanese_normalizer['tn'].normalize(text, verbose=False)
 
-        # 日文特殊处理
-        text = self._process_japanese_text(text)
+        # 第二步：提取英文单词，检查词典或转换为片假名，再转为平假名
+        import jaconv
+        import pykakasi
+
+        # 英文词典（暂时为空，所有英文单词都使用g2p转换）
+        english_dict = {}
+
+        # 处理英文单词
+        def process_english_word(match):
+            word = match.group(0).lower()
+            if word in english_dict:
+                # 词典中有，直接使用片假名
+                katakana = english_dict[word]
+            else:
+                # 词典中没有，使用g2p转换为片假名
+                if self._japanese_processor:
+                    katakana = self._japanese_processor['g2p'](word, kana=True)
+                else:
+                    katakana = word
+            # 片假名转平假名
+            return jaconv.kata2hira(katakana)
+
+        text = re.sub(r'[a-zA-Z]+', process_english_word, text)
+
+        # 第三步：所有汉字转换为平假名
+        kakasi = pykakasi.kakasi()
+        kakasi.setMode('J', 'H')  # 汉字->平假名
+        kakasi.setMode('K', 'H')  # 片假名->平假名
+        kakasi.setMode('H', 'H')  # 平假名->平假名
+        conv = kakasi.getConverter()
+        text = conv.do(text)
+
+        # 第四步：移除所有非平假名字符（主要是标点符号和语气词）
+        text = re.sub(r'[^\u3040-\u309F\s]', '', text)
+
+        # 第五步：转换为小写
+        text = text.lower()
+
+        # 标准化空格
+        text = ' '.join(text.split())
         return text
 
     def _normalize_generic(self, text: str) -> str:
