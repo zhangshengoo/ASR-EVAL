@@ -137,19 +137,15 @@ class HotwordAutomationSystem:
         models = {}
 
         for model_name, config in model_configs.items():
-            try:
-                print(f"正在初始化模型: {model_name}")
-                model_type = ModelType(model_name)
-                model = self.model_factory.create_model(model_type, config)
+            print(f"正在初始化模型: {model_name}")
+            model_type = ModelType(model_name)
+            model = self.model_factory.create_model(model_type, config)
 
-                if model.load_model():
-                    models[model_name] = model
-                    print(f"模型 {model_name} 加载成功")
-                else:
-                    print(f"模型 {model_name} 加载失败")
-
-            except Exception as e:
-                print(f"模型 {model_name} 初始化失败: {e}")
+            if model.load_model():
+                models[model_name] = model
+                print(f"模型 {model_name} 加载成功")
+            else:
+                print(f"模型 {model_name} 加载失败")
 
         return models
 
@@ -167,13 +163,9 @@ class HotwordAutomationSystem:
         if not self.config.get("text_normalization", {}).get("enabled", True):
             return text
 
-        try:
-            if language != "auto":
-                self.text_normalizer.set_language(language)
-            return self.text_normalizer.normalize(text)
-        except Exception as e:
-            print(f"文本规范化失败: {e}")
-            return text
+        if language != "auto":
+            self.text_normalizer.set_language(language)
+        return self.text_normalizer.normalize(text)
 
     def perform_text_alignment(self, target_text: str, predicted_text: str) -> Dict[str, Any]:
         """
@@ -186,16 +178,12 @@ class HotwordAutomationSystem:
         Returns:
             对齐结果详情
         """
-        try:
-            alignment_result = self.text_aligner.generate_diff_report(target_text, predicted_text)
-            return {
-                "alignment": alignment_result.get("alignment", []),
-                "differences": alignment_result.get("differences", {}),
-                "similarity_score": alignment_result.get("similarity_score", 0.0)
-            }
-        except Exception as e:
-            print(f"文本对齐失败: {e}")
-            return {"alignment": [], "differences": {}, "similarity_score": 0.0}
+        alignment_result = self.text_aligner.generate_diff_report(target_text, predicted_text)
+        return {
+            "alignment": alignment_result.get("alignment", []),
+            "differences": alignment_result.get("differences", {}),
+            "similarity_score": alignment_result.get("similarity_score", 0.0)
+        }
 
     def test_single_sample(self, model: BaseASRModel, sample: HotwordTestSample,
                           config_name: str, hotword_library: List[str]) -> HotwordTestResult:
@@ -213,83 +201,61 @@ class HotwordAutomationSystem:
         """
         start_time = time.time()
 
-        try:
-            # 设置热词库（如果模型支持）
-            if hasattr(model, 'set_hotwords'):
-                model.set_hotwords(hotword_library)
+        # 设置热词库（如果模型支持）
+        if hasattr(model, 'set_hotwords'):
+            model.set_hotwords(hotword_library)
 
-            # 执行ASR推理
-            result = model.transcribe_audio(sample.audio_path)
-            predicted_text = result.get("text", "")
-            processing_time = result.get("processing_time", time.time() - start_time)
+        # 执行ASR推理
+        result = model.transcribe_audio(sample.audio_path)
+        predicted_text = result.get("text", "")
+        processing_time = result.get("processing_time", time.time() - start_time)
 
-            # 文本规范化 - 使用自动语言检测
-            normalized_target = self.process_with_text_normalization(sample.target_text, language="auto")
-            normalized_predicted = self.process_with_text_normalization(predicted_text, language="auto")
+        # 文本规范化 - 使用自动语言检测
+        normalized_target = self.process_with_text_normalization(sample.target_text, language="auto")
+        normalized_predicted = self.process_with_text_normalization(predicted_text, language="auto")
 
-            # 设置热词计算器
-            self.hotword_metrics.load_hotwords(hotword_library)
+        # 设置热词计算器
+        self.hotword_metrics.load_hotwords(hotword_library)
 
-            # 计算热词指标 - 使用原始文本进行计算（热词计算器内部会处理规范化）
-            # 同时获取对齐详情以避免重复计算
-            metrics = self.hotword_metrics.calculate_metrics(
-                sample.target_text, predicted_text, include_alignment=True
-            )
+        # 计算热词指标 - 使用原始文本进行计算（热词计算器内部会处理规范化）
+        # 同时获取对齐详情以避免重复计算
+        metrics = self.hotword_metrics.calculate_metrics(
+            sample.target_text, predicted_text, include_alignment=True
+        )
 
-            # 从metrics中提取对齐详情，避免重复对齐计算
-            alignment_details = metrics.get('alignment_details', {})
+        # 从metrics中提取对齐详情，避免重复对齐计算
+        alignment_details = metrics.get('alignment_details', {})
 
-            # 直接使用metrics中的结果
-            recall = metrics.get("recall", 0.0)
-            precision = metrics.get("precision", 0.0)
-            f1_score = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0.0
+        # 直接使用metrics中的结果
+        recall = metrics.get("recall", 0.0)
+        precision = metrics.get("precision", 0.0)
+        f1_score = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0.0
 
-            # 简化热词匹配详情，直接使用计算结果
-            hotword_matches = {
-                "overall": {
-                    "recall": recall,
-                    "precision": precision,
-                    "f1_score": f1_score
-                }
+        # 简化热词匹配详情，直接使用计算结果
+        hotword_matches = {
+            "overall": {
+                "recall": recall,
+                "precision": precision,
+                "f1_score": f1_score
             }
+        }
 
-            return HotwordTestResult(
-                sample_id=sample.filename,
-                model_name=model.model_name,
-                config_name=config_name,
-                hotword_library=hotword_library,
-                target_text=sample.target_text,
-                predicted_text=predicted_text,
-                normalized_target=normalized_target,
-                normalized_predicted=normalized_predicted,
-                recall=recall,
-                precision=precision,
-                f1_score=f1_score,
-                processing_time=processing_time,
-                alignment_details=alignment_details,
-                hotword_matches=hotword_matches
-            )
-
-        except Exception as e:
-            print(f"测试样本 {sample.filename} 失败: {e}")
-            import traceback
-            traceback.print_exc()
-            return HotwordTestResult(
-                sample_id=sample.filename,
-                model_name=getattr(model, 'model_name', 'unknown'),
-                config_name=config_name,
-                hotword_library=hotword_library,
-                target_text=sample.target_text,
-                predicted_text="",
-                normalized_target="",
-                normalized_predicted="",
-                recall=0.0,
-                precision=0.0,
-                f1_score=0.0,
-                processing_time=time.time() - start_time,
-                alignment_details={},
-                hotword_matches={"overall": {"recall": 0.0, "precision": 0.0, "f1_score": 0.0}}
-            )
+        return HotwordTestResult(
+            sample_id=sample.filename,
+            model_name=model.model_name,
+            config_name=config_name,
+            hotword_library=hotword_library,
+            target_text=sample.target_text,
+            predicted_text=predicted_text,
+            normalized_target=normalized_target,
+            normalized_predicted=normalized_predicted,
+            recall=recall,
+            precision=precision,
+            f1_score=f1_score,
+            processing_time=processing_time,
+            alignment_details=alignment_details,
+            hotword_matches=hotword_matches
+        )
 
 
     def run_automated_tests(self, models: Dict[str, BaseASRModel],
