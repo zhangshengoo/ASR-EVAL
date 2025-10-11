@@ -235,10 +235,10 @@ class HotwordAutomationSystem:
         # 设置热词计算器
         self.hotword_metrics.load_hotwords(hotword_library)
 
-        # 计算热词指标 - 使用原始文本进行计算（热词计算器内部会处理规范化）
+        # 计算热词指标 - 使用规范化后的文本进行计算，确保一致性
         # 同时获取对齐详情以避免重复计算
         metrics = self.hotword_metrics.calculate_metrics(
-            sample.target_text, predicted_text, include_alignment=True
+            normalized_target, normalized_predicted, include_alignment=True
         )
 
         # 从metrics中提取对齐详情，避免重复对齐计算
