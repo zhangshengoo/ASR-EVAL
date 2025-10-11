@@ -228,17 +228,13 @@ class HotwordAutomationSystem:
         predicted_text = result.get("text", "")
         processing_time = result.get("processing_time", time.time() - start_time)
 
-        # 文本规范化 - 使用自动语言检测
-        normalized_target = self.process_with_text_normalization(sample.target_text, language="auto")
-        normalized_predicted = self.process_with_text_normalization(predicted_text, language="auto")
-
         # 设置热词计算器
         self.hotword_metrics.load_hotwords(hotword_library)
 
-        # 计算热词指标 - 使用规范化后的文本进行计算，确保一致性
+        # 计算热词指标 - 使用原始文本，calculate_metrics内部会进行规范化处理
         # 同时获取对齐详情以避免重复计算
         metrics = self.hotword_metrics.calculate_metrics(
-            normalized_target, normalized_predicted, include_alignment=True
+            sample.target_text, predicted_text, include_alignment=True
         )
 
         # 从metrics中提取对齐详情，避免重复对齐计算
@@ -265,8 +261,8 @@ class HotwordAutomationSystem:
             hotword_library=hotword_library,
             target_text=sample.target_text,
             predicted_text=predicted_text,
-            normalized_target=normalized_target,
-            normalized_predicted=normalized_predicted,
+            normalized_target=alignment_details.get('reference_text', sample.target_text),
+            normalized_predicted=alignment_details.get('hypothesis_text', predicted_text),
             recall=recall,
             precision=precision,
             f1_score=f1_score,
