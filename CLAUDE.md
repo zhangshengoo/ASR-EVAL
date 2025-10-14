@@ -3,7 +3,7 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Overview
-ASR evaluation framework for comparing models (FireRedASR, KimiAudio, StepAudio2) with WER/CER/SER/RTF metrics and Chinese language support.
+ASR evaluation framework for comparing models (FireRedASR, KimiAudio, StepAudio2) with WER/CER/SER/RTF metrics and multi-language support (Chinese, English, Japanese). Features advanced text alignment using Kaldi, hotword evaluation with semantic matching, and comprehensive benchmarking capabilities.
 
 ## High-Level Architecture
 
@@ -61,10 +61,12 @@ cd /Users/zhangsheng/code/ASR-Eval && python -c "from models.factory import Mode
 ## Key Technical Decisions
 
 ### Text Processing Pipeline
-1. **Kaldi align-text**: Primary alignment algorithm for Chinese/English
+1. **Kaldi align-text**: Primary alignment algorithm for Chinese/English (requires optional Kaldi installation)
 2. **Priority-based edit distance**: Optimized for Chinese character alignment
 3. **Jieba integration**: Chinese word segmentation for proper WER calculation
 4. **Multi-language support**: zh, en, ja with language-specific normalization
+5. **Advanced text normalization**: WeTextProcessing (Chinese), NVIDIA NeMo (English/Japanese), specialized Japanese processing (MeCab, pykakasi, g2p)
+6. **Text alignment components**: TextAligner (Kaldi wrapper), TextComparator (integrated), ASRTextEvaluator (specialized for ASR results)
 
 ### Model Integration Strategy
 - Git submodules for external models
@@ -74,10 +76,18 @@ cd /Users/zhangsheng/code/ASR-Eval && python -c "from models.factory import Mode
 - Multi-GPU parallel inference support
 
 ### Hotword Evaluation Architecture
-- Semantic matching beyond exact string matching
-- Configurable library sizes for different scenarios
-- F1-score, precision, recall metrics
+- Semantic matching beyond exact string matching using text alignment
+- Configurable library sizes for different scenarios (3, 5, 10, 20+ hotwords)
+- F1-score, precision, recall metrics with position-aware matching
 - Integration with main testing framework
+- Support for overlapping and repeated hotwords in audio
+
+### Comprehensive Benchmarking Features
+- **Multi-dataset support**: AISHELL, LibriSpeech, FLEURS, CommonVoice, WenetSpeech, etc.
+- **Paralinguistic information**: Emotion recognition, speaker diarization capabilities
+- **Tool calling**: Integration with external APIs and functions
+- **Speech translation**: Multi-language translation capabilities
+- **Advanced metrics**: Confidence score analysis, RTF optimization, character-level alignment
 
 ### Parallel Processing
 - Multi-process inference with GPU distribution
@@ -145,6 +155,12 @@ cd /Users/zhangsheng/code/ASR-Eval && python -c "from evaluation.text_alignment 
 
 # Validate hotword configuration
 cd /Users/zhangsheng/code/ASR-Eval && python -c "from evaluation.hotword_metrics import HotwordEvaluator; evaluator = HotwordEvaluator(); print('Hotword libraries available:', evaluator.get_available_libraries())"
+
+# Test Kaldi text alignment (if installed)
+cd /Users/zhangsheng/code/ASR-Eval && python -c "from evaluation.text_alignment import TextAligner; aligner = TextAligner(); result = aligner.align_texts('测试文本', '测试文件'); print('Kaldi alignment result:', result)"
+
+# Check text normalization with language detection
+cd /Users/zhangsheng/code/ASR-Eval && python -c "from evaluation.text_normalizer import TextNormalizer; n = TextNormalizer(); print('Auto-detected language normalization:', n.normalize('Hello世界2024'))"
 ```
 
 ## Quick Setup and Installation
@@ -185,6 +201,38 @@ python -c "from evaluation.text_normalizer import TextNormalizer; n = TextNormal
 
 # Validate dataset integrity
 python -c "from datasets.manager import TestDatasetManager; manager = TestDatasetManager(); manager.validate_dataset('datasets/regression_test')"
+```
+
+## Model-Specific Setup Requirements
+
+### StepAudio2 Setup
+```bash
+# Requires Python 3.10+, PyTorch 2.3+ with CUDA
+# Audio requirements: 16kHz sampling rate, 0.5-300 second duration
+# Hotword configuration: confidence thresholds, max 20 characters per hotword
+
+# Initialize StepAudio2 submodule with git lfs
+git lfs install
+git submodule update --init --recursive Model/StepAudio2
+```
+
+### Advanced Text Processing Setup
+```bash
+# For optimal text alignment (optional but recommended)
+# Install Kaldi toolkit for best alignment results
+
+# Advanced text normalization dependencies
+pip install -r requirements-wetextprocessing.txt  # Chinese: WeTextProcessing
+pip install -r requirements-nemo.txt              # English/Japanese: NVIDIA NeMo
+pip install -r requirements-japanese.txt          # Japanese: MeCab, pykakasi, g2p
+```
+
+### Hotword Test Data Format
+```
+# Hotword test files use .list format
+# Each line: hotword_text\tconfidence_threshold\toptional_category
+人工智能\t0.8\ttechnology
+机器学习\t0.7\ttechnology
 ```
 
 ## Project Structure

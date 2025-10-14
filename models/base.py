@@ -31,6 +31,10 @@ class BaseASRModel(ABC):
         self.available_gpus = model_config.get("available_gpus", None)  # 指定可用GPU列表
         self.parallel_batch_size = model_config.get("parallel_batch_size", 1)  # 每批处理的音频数量
 
+        # 热词支持
+        self.hotwords_enabled = model_config.get("hotwords_enabled", True)
+        self.current_hotwords = []
+
     @abstractmethod
     def load_model(self) -> bool:
         """
@@ -165,10 +169,16 @@ class BaseASRModel(ABC):
 
     def batch_inference(self, audio_items: List[Dict[str, Any]]) -> List[TestResult]:
         """
-        批量推理 - 支持并行处理
+        批量推理 - 支持并行处理和每个样本的热词库
 
         Args:
-            audio_items: [{"audio_path": str, "reference_text": str}, ...]
+            audio_items: [{
+                "audio_path": str,
+                "reference_text": str,
+                "hotwords": List[str],  # 可选：该样本的热词库
+                "sample_id": str,       # 可选：样本ID
+                "config_name": str      # 可选：配置名称
+            }, ...]
 
         Returns:
             List[TestResult]: 测试结果列表
@@ -176,32 +186,39 @@ class BaseASRModel(ABC):
         if not self.is_loaded:
             raise RuntimeError("模型未加载，请先调用load_model()")
 
-        # 提取音频路径
-        audio_paths = [item["audio_path"] for item in audio_items]
+        # 检查是否所有样本都有热词信息
+        has_per_sample_hotwords = any(item.get("hotwords") is not None for item in audio_items)
 
-        if self.parallel_enabled and len(audio_paths) > 1:
-            # 使用并行推理
-            parallel_results = self.transcribe_audio_parallel(audio_paths)
-
-            # 转换为TestResult格式
-            results = []
-            for i, result in enumerate(parallel_results):
-                audio_item = audio_items[i]
-                test_result = TestResult(
-                    audio_path=audio_item["audio_path"],
-                    model_type=self.model_type,
-                    reference_text=audio_item.get("reference_text", ""),
-                    predicted_text=result.get("text", ""),
-                    processing_time=result.get("processing_time", 0.0),
-                    confidence_score=result.get("confidence", 0.0),
-                    word_timestamps=result.get("timestamps", None)
-                )
-                results.append(test_result)
-
-            return results
+        if has_per_sample_hotwords:
+            # 如果样本包含热词信息，使用支持每个样本热词的批处理方法
+            return self._batch_inference_with_per_sample_hotwords(audio_items)
         else:
-            # 使用串行处理
-            return self._serial_batch_inference(audio_items)
+            # 使用标准批处理方法（所有样本使用相同的热词库或没有热词）
+            audio_paths = [item["audio_path"] for item in audio_items]
+
+            if self.parallel_enabled and len(audio_paths) > 1:
+                # 使用并行推理
+                parallel_results = self.transcribe_audio_parallel(audio_paths)
+
+                # 转换为TestResult格式
+                results = []
+                for i, result in enumerate(parallel_results):
+                    audio_item = audio_items[i]
+                    test_result = TestResult(
+                        audio_path=audio_item["audio_path"],
+                        model_type=self.model_type,
+                        reference_text=audio_item.get("reference_text", ""),
+                        predicted_text=result.get("text", ""),
+                        processing_time=result.get("processing_time", 0.0),
+                        confidence_score=result.get("confidence", 0.0),
+                        word_timestamps=result.get("timestamps", None)
+                    )
+                    results.append(test_result)
+
+                return results
+            else:
+                # 使用串行处理
+                return self._serial_batch_inference(audio_items)
 
     def _serial_batch_inference(self, audio_items: List[Dict[str, Any]]) -> List[TestResult]:
         """
@@ -223,6 +240,52 @@ class BaseASRModel(ABC):
                 results.append(result)
             except Exception as e:
                 print(f"推理失败: {item.get('audio_path', 'unknown')}, 错误: {str(e)}")
+                continue
+
+        return results
+
+    def _batch_inference_with_per_sample_hotwords(self, audio_items: List[Dict[str, Any]]) -> List[TestResult]:
+        """
+        支持每个样本不同热词库的批量推理
+
+        Args:
+            audio_items: 包含热词信息的音频项目列表
+
+        Returns:
+            List[TestResult]: 测试结果列表
+        """
+        results = []
+
+        # 串行处理每个样本（因为每个样本可能有不同的热词）
+        for item in audio_items:
+            try:
+                # 设置该样本的热词
+                hotwords = item.get("hotwords", [])
+                if hotwords:
+                    self.set_hotwords(hotwords)
+                else:
+                    self.clear_hotwords()
+
+                # 执行单个推理
+                result = self.run_inference(
+                    item["audio_path"],
+                    item.get("reference_text", "")
+                )
+                results.append(result)
+
+            except Exception as e:
+                print(f"推理失败: {item.get('audio_path', 'unknown')}, 错误: {str(e)}")
+                # 创建错误结果
+                error_result = TestResult(
+                    audio_path=item.get("audio_path", ""),
+                    model_type=self.model_type,
+                    reference_text=item.get("reference_text", ""),
+                    predicted_text="",
+                    processing_time=0.0,
+                    confidence_score=0.0,
+                    word_timestamps=None
+                )
+                results.append(error_result)
                 continue
 
         return results
@@ -463,6 +526,41 @@ class BaseASRModel(ABC):
     def cleanup(self):
         """清理资源"""
         pass
+
+    def set_hotwords(self, hotwords: List[str]) -> bool:
+        """
+        设置模型的热词库
+
+        Args:
+            hotwords: 热词列表
+
+        Returns:
+            bool: 设置成功返回True，失败返回False
+        """
+        if not self.hotwords_enabled:
+            return False
+
+        self.current_hotwords = hotwords.copy() if hotwords else []
+        return True
+
+    def get_hotwords(self) -> List[str]:
+        """
+        获取当前热词库
+
+        Returns:
+            List[str]: 当前热词列表
+        """
+        return self.current_hotwords.copy()
+
+    def clear_hotwords(self) -> bool:
+        """
+        清除热词库
+
+        Returns:
+            bool: 清除成功返回True
+        """
+        self.current_hotwords = []
+        return True
 
 
 class ModelRegistry:

@@ -38,6 +38,9 @@ class StepAudio2Model(BaseASRModel):
         self.model = None
         self.sample_rate = 16000
 
+        # 热词配置 - 简化版本
+        self.hotwords = model_config.get("hotwords", [])
+
     def load_model(self) -> bool:
         """
         加载StepAudio2模型
@@ -82,21 +85,8 @@ class StepAudio2Model(BaseASRModel):
         """
         start_time = time.time()
 
-        # 构建消息格式
-        messages = [
-            {
-                "role": "system",
-                "content": "You are a helpful assistant. Transcribe the given audio accurately."
-            },
-            {
-                "role": "human",
-                "content": [{"type": "audio", "audio": audio_path}]
-            },
-            {
-                "role": "assistant",
-                "content": None
-            }
-        ]
+        # 构建消息格式（包含热词信息）
+        messages = self._prepare_messages_with_hotwords(audio_path)
 
         # 调用模型进行推理
         tokens, output_text, _ = self.model(
@@ -121,7 +111,7 @@ class StepAudio2Model(BaseASRModel):
             "language": self._detect_language(output_text)
         }
 
-    def transcribe_audio_batch(self, audio_paths: List[str], _device: str, **kwargs) -> List[Dict[str, Any]]:
+    def transcribe_audio_batch(self, audio_paths: List[str], device: str, **kwargs) -> List[Dict[str, Any]]:
         """
         批量转录音频文件 - 用于并行处理
 
@@ -145,26 +135,19 @@ class StepAudio2Model(BaseASRModel):
         # 加载模型到指定设备
         model = StepAudio2Core(str(Path(self.model_path)))
 
+        # 设置设备（如果支持）
+        if torch.cuda.is_available():
+            device_id = 0 if device.startswith("cuda:") else int(device.split(":")[-1]) if ":" in device else 0
+            if device_id < torch.cuda.device_count():
+                torch.cuda.set_device(device_id)
+
         # 处理音频批次
         results = []
         for audio_path in audio_paths:
             start_time = time.time()
 
-            # 构建消息格式
-            messages = [
-                {
-                    "role": "system",
-                    "content": "You are a helpful assistant. Transcribe the given audio accurately."
-                },
-                {
-                    "role": "human",
-                    "content": [{"type": "audio", "audio": audio_path}]
-                },
-                {
-                    "role": "assistant",
-                    "content": None
-                }
-            ]
+            # 构建消息格式（包含热词信息）
+            messages = self._prepare_messages_with_hotwords(audio_path)
 
             # 调用模型进行推理
             tokens, output_text, _ = model(
@@ -292,3 +275,49 @@ class StepAudio2Model(BaseASRModel):
 
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
+
+    def set_hotwords(self, hotwords: List[str]) -> bool:
+        """
+        设置StepAudio2的热词库
+
+        Args:
+            hotwords: 热词列表
+
+        Returns:
+            bool: 设置成功返回True
+        """
+        self.current_hotwords = hotwords.copy() if hotwords else []
+        return True
+
+    def _prepare_messages_with_hotwords(self, audio_path: str) -> List[Dict[str, Any]]:
+        """
+        准备包含热词信息的messages
+
+        Args:
+            audio_path: 音频文件路径
+
+        Returns:
+            messages列表
+        """
+        # 基础messages格式
+        messages = [
+            {
+                "role": "system",
+                "content": "You are a helpful assistant. Transcribe the given audio accurately."
+            },
+            {
+                "role": "human",
+                "content": [{"type": "audio", "audio": audio_path}]
+            },
+            {
+                "role": "assistant",
+                "content": None
+            }
+        ]
+
+        # 如果有热词，添加到系统提示中
+        if self.current_hotwords:
+            hotwords_text = ", ".join(self.current_hotwords)
+            messages[0]["content"] = f"You are a helpful assistant. Transcribe the given audio accurately. Pay special attention to these keywords: {hotwords_text}"
+
+        return messages

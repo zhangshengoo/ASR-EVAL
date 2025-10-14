@@ -43,31 +43,6 @@
     "max_workers": 8,
     "timeout": 300
   },
-  "text_processing": {
-    "normalization": {
-      "enabled": true,
-      "language": "auto",
-      "use_wetextprocessing": true,
-      "use_nemo": true
-    },
-    "alignment": {
-      "enabled": true,
-      "method": "kaldi_align_text",
-      "detailed_output": true
-    }
-  },
-  "evaluation": {
-    "hotword_metrics": {
-      "matching_strictness": "exact",
-      "case_sensitive": false,
-      "allow_partial_matches": false
-    },
-    "text_metrics": {
-      "calculate_wer": true,
-      "calculate_cer": true,
-      "calculate_similarity": true
-    }
-  },
   "output": {
     "format": "json",
     "detailed": true,
@@ -90,10 +65,5 @@
       "description": "大型热词库"
     }
   },
-  "performance_settings": {
-    "memory_limit_gb": 16,
-    "gpu_memory_fraction": 0.8,
-    "cpu_affinity": false,
-    "enable_memory_monitoring": true
-  }
+  "enabled_configs": ["lib3", "lib5", "lib10"]
 }

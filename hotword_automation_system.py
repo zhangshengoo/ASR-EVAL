@@ -9,7 +9,7 @@ import time
 from pathlib import Path
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
-import multiprocessing as mp
+# import multiprocessing  # 注释掉，当前实现中未直接使用
 
 from models.factory import ModelFactory
 from models.base import BaseASRModel
@@ -67,27 +67,77 @@ class HotwordAutomationSystem:
         self.results_cache = {}
 
     def _load_config(self, config_path: str) -> Dict[str, Any]:
-        """加载配置文件"""
+        """加载配置文件并使其设置生效"""
         try:
             with open(config_path, 'r', encoding='utf-8') as f:
-                return json.load(f)
+                loaded_config = json.load(f)
         except FileNotFoundError:
-            # 创建默认配置
-            default_config = {
-                "models": ["step_audio2", "kimi_audio", "fire_red_asr"],
-                "datasets": ["/Users/zhangsheng/code/ASR-Eval/datasets/热词测试/场景1"],
+            print(f"配置文件 {config_path} 不存在，使用默认配置")
+            loaded_config = self._create_default_config()
+
+        # 处理配置文件，使其设置生效
+        return self._process_config(loaded_config)
+
+    def _create_default_config(self) -> Dict[str, Any]:
+        """创建默认配置"""
+        return {
+            "models": {
+                "step_audio2": {
+                    "model_path": "Model/Stepaudio2",
+                    "device": "cuda",
+                    "parallel_enabled": True,
+                    "num_processes": 4,
+                    "available_gpus": [0, 1],
+                    "batch_size": 2
+                }
+            },
+            "datasets": ["/Users/zhangsheng/code/ASR-Eval/datasets/热词测试/场景1"],
+            "test_settings": {
                 "parallel_enabled": True,
                 "num_processes": 4,
                 "available_gpus": [0, 1],
-                "batch_size": 2,
-                "text_normalization": {
-                    "enabled": True,
-                    "language": "auto"
-                },
-                "output_format": "json",
+                "batch_size": 2
+            },
+            "text_normalization": {
+                "enabled": True,
+                "language": "auto"
+            },
+            "output": {
                 "output_path": "results/hotword_tests"
             }
-            return default_config
+        }
+
+    def _process_config(self, config: Dict[str, Any]) -> Dict[str, Any]:
+        """处理配置，提取关键设置并使其生效"""
+        # 提取测试设置
+        test_settings = config.get("test_settings", {})
+        self.parallel_enabled = test_settings.get("parallel_enabled", True)
+        self.num_processes = test_settings.get("num_processes", 4)
+        self.available_gpus = test_settings.get("available_gpus", [0])
+        self.batch_size = test_settings.get("batch_size", 2)
+
+        # 提取数据集配置
+        datasets_config = config.get("datasets", [])
+        self.available_datasets = datasets_config if isinstance(datasets_config, list) else []
+        self.default_dataset = self.available_datasets[0] if self.available_datasets else "/Users/zhangsheng/code/ASR-Eval/datasets/热词测试/场景1"
+
+        # 提取输出配置
+        output_config = config.get("output", {})
+        self.output_path = output_config.get("output_path", "results/hotword_tests")
+
+        # 提取热词库配置选择
+        self.enabled_configs = config.get("enabled_configs", ["lib3", "lib5", "lib10"])
+        self.hotword_configurations = config.get("hotword_configurations", {})
+
+        # 打印配置信息
+        print(f"配置加载完成:")
+        print(f"  测试设置: parallel={self.parallel_enabled}, processes={self.num_processes}, GPUs={self.available_gpus}, batch={self.batch_size}")
+        print(f"  可用数据集: {len(self.available_datasets)} 个")
+        print(f"  默认数据集: {self.default_dataset}")
+        print(f"  输出路径: {self.output_path}")
+        print(f"  启用热词库配置: {self.enabled_configs}")
+
+        return config
 
     def load_hotword_dataset(self, dataset_path: str) -> List[HotwordTestSample]:
         """
@@ -139,7 +189,13 @@ class HotwordAutomationSystem:
 
         for model_name, config in model_configs.items():
             print(f"正在初始化模型: {model_name}")
-            model_type = ModelType(model_name)
+            print(f"模型配置: {config}")
+
+            try:
+                model_type = ModelType(model_name)
+            except ValueError:
+                print(f"错误: 不支持的模型类型 {model_name}")
+                continue
 
             # 创建ModelConfig对象
             model_config = ModelConfig(
@@ -157,9 +213,10 @@ class HotwordAutomationSystem:
                 }
             )
 
+            print(f"创建ModelConfig: {model_config}")
             model = self.model_factory.create_model(model_config)
 
-            if model.load_model():
+            if model and model.load_model():
                 models[model_name] = model
                 print(f"模型 {model_name} 加载成功")
             else:
@@ -299,16 +356,30 @@ class HotwordAutomationSystem:
 
             # 遍历每个样本
             for sample in samples:
-                # 遍历每个热词库配置
+                # 只测试enabled_configs中指定的配置
                 for config_name, config_data in sample.configs.items():
+                    # 检查该配置是否在启用列表中
+                    if config_name not in self.enabled_configs:
+                        continue
+
                     hotword_library = config_data.get("hotwords", [])
 
-                    print(f"  样本: {sample.filename}, 配置: {config_name}, 热词数: {len(hotword_library)}")
+                    print(f"\n  样本: {sample.filename}, 配置: {config_name}, 热词数: {len(hotword_library)}")
 
                     # 执行测试
                     result = self.test_single_sample(
                         model, sample, config_name, hotword_library
                     )
+
+                    # 打印详细的样本输出信息
+                    print(f"    目标文本: {sample.target_text}")
+                    print(f"    模型输出: {result.predicted_text}")
+                    print(f"    规范化目标: {result.normalized_target}")
+                    print(f"    规范化输出: {result.normalized_predicted}")
+                    print(f"    召回率: {result.recall:.3f}, 精确率: {result.precision:.3f}, F1: {result.f1_score:.3f}")
+                    print(f"    处理时间: {result.processing_time:.3f}秒")
+                    print(f"    {'-' * 60}")  # 分隔线
+
                     model_results.append(result)
 
             all_results[model_name] = model_results
@@ -318,7 +389,7 @@ class HotwordAutomationSystem:
     def run_parallel_tests(self, models: Dict[str, BaseASRModel],
                           dataset_path: str) -> Dict[str, List[HotwordTestResult]]:
         """
-        运行并行化测试（如果模型支持）
+        真正的并行化测试 - 支持每个样本使用不同的热词库
 
         Args:
             models: 模型字典
@@ -327,7 +398,7 @@ class HotwordAutomationSystem:
         Returns:
             测试结果字典
         """
-        print("开始并行化热词测试...")
+        print("开始真正的并行化热词测试（支持每个样本不同热词库）...")
 
         samples = self.load_hotword_dataset(dataset_path)
         print(f"加载了 {len(samples)} 个测试样本")
@@ -336,26 +407,86 @@ class HotwordAutomationSystem:
 
         # 为每个模型启用并行处理
         for model_name, model in models.items():
-            if hasattr(model, 'parallel_enabled'):
-                model.parallel_enabled = True
-                model.num_processes = self.config.get("num_processes", mp.cpu_count())
-                model.available_gpus = self.config.get("available_gpus", [0])
-                model.parallel_batch_size = self.config.get("batch_size", 2)
-
-            # 使用模型的并行处理能力
+            print(f"\n并行测试模型: {model_name}")
             model_results = []
 
-            for sample in samples:
-                for config_name, config_data in sample.configs.items():
-                    hotword_library = config_data.get("hotwords", [])
+            # 配置模型并行参数
+            if hasattr(model, 'parallel_enabled'):
+                model.parallel_enabled = self.parallel_enabled
+                model.num_processes = self.num_processes
+                model.available_gpus = self.available_gpus
+                model.parallel_batch_size = self.batch_size
 
-                    # 执行测试
-                    result = self.test_single_sample(
-                        model, sample, config_name, hotword_library
+            # 按热词库配置分组处理，每个配置单独批处理
+            for config_name in self.enabled_configs:
+                print(f"\n  处理热词库配置: {config_name}")
+
+                # 收集该配置下的所有样本
+                batch_items = []
+                for sample in samples:
+                    if config_name in sample.configs:
+                        config_data = sample.configs[config_name]
+                        hotword_library = config_data.get("hotwords", [])
+
+                        # 创建批处理项 - 包含该样本的热词库信息
+                        batch_item = {
+                            "audio_path": sample.audio_path,
+                            "reference_text": sample.target_text,
+                            "sample_id": sample.filename,
+                            "config_name": config_name,
+                            "hotwords": hotword_library,  # 每个样本的热词库
+                            "target_hotwords": sample.target_hotwords
+                        }
+                        batch_items.append(batch_item)
+
+                if not batch_items:
+                    print(f"    配置 {config_name} 没有样本，跳过")
+                    continue
+
+                print(f"    批处理 {len(batch_items)} 个样本")
+
+                # 执行批量推理 - 现在支持每个样本不同的热词库
+                batch_results = model.batch_inference(batch_items)
+
+                # 处理批量推理结果
+                for i, batch_result in enumerate(batch_results):
+                    batch_item = batch_items[i]
+
+                    # 计算热词指标（使用对应样本的热词库）
+                    self.hotword_metrics.load_hotwords(batch_item["hotwords"])
+                    metrics = self.hotword_metrics.calculate_metrics(
+                        batch_item["reference_text"],
+                        batch_result.predicted_text,
+                        include_alignment=True
                     )
-                    model_results.append(result)
+
+                    alignment_details = metrics.get('alignment_details', {})
+                    recall = metrics.get("recall", 0.0)
+                    precision = metrics.get("precision", 0.0)
+                    f1_score = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0.0
+
+                    # 创建热词测试结果
+                    hotword_result = HotwordTestResult(
+                        sample_id=batch_item["sample_id"],
+                        model_name=model_name,
+                        config_name=config_name,
+                        hotword_library=batch_item["hotwords"],  # 使用样本特定的热词库
+                        target_text=batch_item["reference_text"],
+                        predicted_text=batch_result.predicted_text,
+                        normalized_target=alignment_details.get('reference_text', batch_item["reference_text"]),
+                        normalized_predicted=alignment_details.get('hypothesis_text', batch_result.predicted_text),
+                        recall=recall,
+                        precision=precision,
+                        f1_score=f1_score,
+                        processing_time=batch_result.processing_time,
+                        alignment_details=alignment_details,
+                        hotword_matches={"overall": {"recall": recall, "precision": precision, "f1_score": f1_score}}
+                    )
+
+                    model_results.append(hotword_result)
 
             all_results[model_name] = model_results
+            print(f"模型 {model_name} 并行测试完成，共 {len(model_results)} 个结果")
 
         return all_results
 
@@ -425,26 +556,28 @@ class HotwordAutomationSystem:
 
         return report
 
-    def save_results(self, report: Dict[str, Any], output_path: str):
+    def save_results(self, report: Dict[str, Any], output_path: str = None):
         """
         保存测试结果
 
         Args:
             report: 测试报告
-            output_path: 输出路径
+            output_path: 输出路径（如为None则使用配置文件中的路径）
         """
-        os.makedirs(output_path, exist_ok=True)
+        # 使用配置文件中的输出路径或指定路径
+        save_path = output_path or self.output_path
+        os.makedirs(save_path, exist_ok=True)
 
         # 保存详细结果
-        results_file = os.path.join(output_path, "hotword_test_results.json")
+        results_file = os.path.join(save_path, "hotword_test_results.json")
         with open(results_file, 'w', encoding='utf-8') as f:
             json.dump(report, f, ensure_ascii=False, indent=2)
 
         # 保存CSV格式（便于分析）
-        csv_file = os.path.join(output_path, "hotword_test_results.csv")
+        csv_file = os.path.join(save_path, "hotword_test_results.csv")
         self._save_csv_results(report, csv_file)
 
-        print(f"结果已保存到: {output_path}")
+        print(f"结果已保存到: {save_path}")
 
     def _save_csv_results(self, report: Dict[str, Any], csv_file: str):
         """保存CSV格式的结果"""
@@ -479,31 +612,47 @@ def main():
     parser = argparse.ArgumentParser(description="热词自动化测试系统")
     parser.add_argument("--config", default="config/hotword_test_config.json",
                        help="配置文件路径")
-    parser.add_argument("--dataset", default="/Users/zhangsheng/code/ASR-Eval/datasets/热词测试/场景1",
-                       help="数据集路径")
+    parser.add_argument("--dataset",
+                       help="数据集路径（如不指定则使用配置文件中的默认数据集）")
     parser.add_argument("--models", nargs="+",
                        default=["step_audio2", "kimi_audio", "fire_red_asr"],
                        help="要测试的模型列表")
     parser.add_argument("--parallel", action="store_true",
-                       help="启用并行处理")
-    parser.add_argument("--output", default="results/hotword_tests",
-                       help="输出路径")
+                       help="启用并行处理（覆盖配置文件设置）")
+    parser.add_argument("--output",
+                       help="输出路径（如不指定则使用配置文件中的默认路径）")
 
     args = parser.parse_args()
 
     # 创建测试系统
     test_system = HotwordAutomationSystem(args.config)
 
-    # 准备模型配置
+    # 准备模型配置 - 从配置文件读取模型设置
     model_configs = {}
+    config_models = test_system.config.get("models", {})
+
+    print(f"从配置文件加载模型设置，可用模型: {list(config_models.keys())}")
+
     for model_name in args.models:
-        model_configs[model_name] = {
-            "model_path": f"Model/{model_name.title().replace('_', '')}",
-            "device": "cuda",
-            "parallel_enabled": args.parallel,
-            "num_processes": 4,
-            "available_gpus": [0, 1]  # 简化为固定配置
-        }
+        if model_name in config_models:
+            # 使用配置文件中的模型设置
+            model_configs[model_name] = config_models[model_name].copy()
+            print(f"使用配置文件设置模型 {model_name}: {model_configs[model_name]}")
+            # 命令行参数可以覆盖配置文件设置
+            if args.parallel:
+                model_configs[model_name]["parallel_enabled"] = args.parallel
+                print(f"命令行参数覆盖并行设置: parallel_enabled = {args.parallel}")
+        else:
+            # 如果配置文件中没有该模型，使用默认配置
+            print(f"警告: 配置文件中没有找到模型 {model_name} 的设置，使用默认配置")
+            model_configs[model_name] = {
+                "model_path": f"Model/{model_name.title().replace('_', '')}",
+                "device": "cuda",
+                "parallel_enabled": args.parallel,
+                "num_processes": 4,
+                "available_gpus": [0, 1]
+            }
+            print(f"使用默认配置模型 {model_name}: {model_configs[model_name]}")
 
     # 初始化模型
     print("正在初始化模型...")
@@ -513,17 +662,26 @@ def main():
         print("没有成功加载的模型，测试终止")
         return
 
+    # 使用配置文件中的设置或命令行参数
+    dataset_path = args.dataset or test_system.default_dataset
+    output_path = args.output or test_system.output_path
+    use_parallel = args.parallel if args.parallel is not None else test_system.parallel_enabled
+
+    print(f"使用数据集: {dataset_path}")
+    print(f"输出路径: {output_path}")
+    print(f"并行处理: {use_parallel}")
+
     # 运行测试
-    if args.parallel:
-        results = test_system.run_parallel_tests(models, args.dataset)
+    if use_parallel:
+        results = test_system.run_parallel_tests(models, dataset_path)
     else:
-        results = test_system.run_automated_tests(models, args.dataset)
+        results = test_system.run_automated_tests(models, dataset_path)
 
     # 生成报告
     report = test_system.generate_test_report(results)
 
     # 保存结果
-    test_system.save_results(report, args.output)
+    test_system.save_results(report, output_path)
 
     # 打印摘要
     print("\n=== 测试完成 ===")
