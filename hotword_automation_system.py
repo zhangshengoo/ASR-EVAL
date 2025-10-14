@@ -113,8 +113,19 @@ class HotwordAutomationSystem:
         test_settings = config.get("test_settings", {})
         self.parallel_enabled = test_settings.get("parallel_enabled", True)
         self.num_processes = test_settings.get("num_processes", 4)
-        self.available_gpus = test_settings.get("available_gpus", [0])
+        self.available_gpus = test_settings.get("available_gpus", None)  # None表示使用所有可用GPU
         self.batch_size = test_settings.get("batch_size", 2)
+
+        # 自动检测GPU配置
+        if self.available_gpus is None:
+            import torch
+            if torch.cuda.is_available():
+                gpu_count = torch.cuda.device_count()
+                self.available_gpus = list(range(gpu_count))
+                print(f"自动检测到 {gpu_count} 个GPU，将使用所有GPU")
+            else:
+                self.available_gpus = [0]  # 回退到CPU
+                print("未检测到GPU，使用CPU")
 
         # 提取数据集配置
         datasets_config = config.get("datasets", [])

@@ -5,7 +5,7 @@
       "device": "cuda",
       "parallel_enabled": true,
       "num_processes": 4,
-      "available_gpus": [0, 1],
+      "available_gpus": null,
       "batch_size": 2,
       "max_new_tokens": 256,
       "temperature": 0.7,
@@ -18,7 +18,7 @@
       "device": "cuda",
       "parallel_enabled": true,
       "num_processes": 2,
-      "available_gpus": [0, 1],
+      "available_gpus": null,
       "batch_size": 4
     },
     "fire_red_asr": {
@@ -26,7 +26,7 @@
       "device": "cuda",
       "parallel_enabled": true,
       "num_processes": 2,
-      "available_gpus": [0, 1],
+      "available_gpus": null,
       "batch_size": 4
     }
   },
@@ -38,7 +38,7 @@
   "test_settings": {
     "parallel_enabled": true,
     "num_processes": 4,
-    "available_gpus": [0, 1],
+    "available_gpus": null,
     "batch_size": 2,
     "max_workers": 8,
     "timeout": 300

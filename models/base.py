@@ -380,8 +380,16 @@ class BaseASRModel(ABC):
 
         if torch.cuda.is_available():
             gpu_count = torch.cuda.device_count()
-            return list(range(gpu_count))
+            if gpu_count > 0:
+                # 默认使用所有可用GPU
+                available_gpus = list(range(gpu_count))
+                print(f"检测到 {gpu_count} 个GPU，将使用所有GPU: {available_gpus}")
+                return available_gpus
+            else:
+                print("未检测到GPU，使用CPU")
+                return [0]  # 使用CPU
         else:
+            print("PyTorch CUDA不可用，使用CPU")
             return [0]  # 使用CPU
 
     def _distribute_audios_to_gpus(self, audio_paths: List[str], gpu_ids: List[int], batch_size: int) -> List[tuple]:
