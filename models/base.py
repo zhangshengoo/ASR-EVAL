@@ -246,13 +246,24 @@ class BaseASRModel(ABC):
 
     def _batch_inference_with_per_sample_hotwords(self, audio_items: List[Dict[str, Any]]) -> List[TestResult]:
         """
-        支持每个样本不同热词库的批量推理
+        支持每个样本不同热词库的批量推理 - 优化并行处理
 
         Args:
             audio_items: 包含热词信息的音频项目列表
 
         Returns:
             List[TestResult]: 测试结果列表
+        """
+        # 如果启用了并行处理且有多个样本，尝试使用并行处理
+        if self.parallel_enabled and len(audio_items) > 1:
+            return self._batch_inference_with_per_sample_hotwords_parallel(audio_items)
+        else:
+            # 回退到串行处理
+            return self._batch_inference_with_per_sample_hotwords_serial(audio_items)
+
+    def _batch_inference_with_per_sample_hotwords_serial(self, audio_items: List[Dict[str, Any]]) -> List[TestResult]:
+        """
+        串行处理每个样本（保持原有逻辑）
         """
         results = []
 
@@ -289,6 +300,211 @@ class BaseASRModel(ABC):
                 continue
 
         return results
+
+    def _batch_inference_with_per_sample_hotwords_parallel(self, audio_items: List[Dict[str, Any]]) -> List[TestResult]:
+        """
+        并行处理每个样本的热词推理 - 新实现
+
+        思路：将样本分组到不同进程，每个进程独立处理自己的样本和热词
+        """
+        import torch
+        from concurrent.futures import ProcessPoolExecutor, as_completed
+        import multiprocessing as mp
+
+        print(f"启动热词并行处理: 样本数={len(audio_items)}")
+
+        # 获取GPU配置
+        gpu_ids = self._get_available_gpus()
+        max_workers = min(self.num_processes or mp.cpu_count(), len(gpu_ids), len(audio_items))
+
+        print(f"并行处理配置: 进程数={max_workers}, GPU数={len(gpu_ids)}")
+
+        # 将样本分组到不同的GPU
+        sample_batches = self._distribute_items_to_gpus(audio_items, gpu_ids)
+
+        # 使用进程池进行并行处理
+        with ProcessPoolExecutor(max_workers=max_workers, mp_context=mp.get_context('spawn')) as executor:
+            # 提交任务
+            futures = []
+            for gpu_id, item_batch in sample_batches:
+                future = executor.submit(
+                    BaseASRModel._process_hotword_batch_parallel_static,
+                    item_batch,
+                    gpu_id,
+                    self._get_model_config_for_parallel(),
+                    self.current_hotwords,  # 传递当前热词作为默认
+                    self.model_type.value if self.model_type else ""  # 传递模型类型
+                )
+                futures.append(future)
+
+            # 收集结果
+            results = []
+            for future in as_completed(futures):
+                try:
+                    batch_results = future.result()
+                    results.extend(batch_results)
+                except Exception as e:
+                    print(f"热词并行批处理失败: {e}")
+                    # 为失败的批次创建错误结果
+                    for item in item_batch:
+                        error_result = TestResult(
+                            audio_path=item.get("audio_path", ""),
+                            model_type=self.model_type,
+                            reference_text=item.get("reference_text", ""),
+                            predicted_text="",
+                            processing_time=0.0,
+                            confidence_score=0.0,
+                            word_timestamps=None
+                        )
+                        results.append(error_result)
+
+        return results
+
+    def _distribute_items_to_gpus(self, audio_items: List[Dict[str, Any]], gpu_ids: List[int]) -> List[tuple]:
+        """
+        将样本分配到不同的GPU上进行处理
+
+        Args:
+            audio_items: 音频项目列表
+            gpu_ids: GPU ID列表
+
+        Returns:
+            List[tuple]: [(gpu_id, item_batch), ...]
+        """
+        batches = []
+
+        # 计算每个GPU应该处理的样本数量
+        num_gpus = len(gpu_ids)
+        items_per_gpu = len(audio_items) // num_gpus
+        remainder = len(audio_items) % num_gpus
+
+        start_idx = 0
+        for i, gpu_id in enumerate(gpu_ids):
+            # 计算当前GPU的样本数量
+            gpu_item_count = items_per_gpu + (1 if i < remainder else 0)
+
+            if gpu_item_count == 0:
+                continue
+
+            # 获取当前GPU的样本列表
+            gpu_items = audio_items[start_idx:start_idx + gpu_item_count]
+            start_idx += gpu_item_count
+
+            batches.append((gpu_id, gpu_items))
+
+        return batches
+
+    @staticmethod
+    def _process_hotword_batch_parallel_static(item_batch: List[Dict[str, Any]], gpu_id: int,
+                                             model_config: Dict[str, Any], default_hotwords: List[str], model_type_value: str) -> List[TestResult]:
+        """
+        静态方法版本，用于进程池调用 - 处理热词批处理
+
+        重要优化：每个进程只加载一次模型，然后处理整个批次
+        """
+        import torch
+        import os
+        import time
+
+        # 设置当前进程的GPU设备
+        if torch.cuda.is_available() and gpu_id < torch.cuda.device_count():
+            os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
+
+        print(f"热词处理进程 {os.getpid()} 使用 GPU {gpu_id} 处理 {len(item_batch)} 个样本")
+
+        try:
+            # 根据模型类型重新创建模型实例 - 只加载一次
+            from core.enums import ModelType
+            from models.factory import ModelFactory
+            from core.models import ModelConfig
+
+            # 使用传入的模型类型
+            if not model_type_value:
+                raise ValueError("模型类型未指定")
+
+            model_type = ModelType(model_type_value)
+
+            # 创建模型配置
+            model_config_obj = ModelConfig(
+                model_type=model_type,
+                model_path=model_config.get("model_path", ""),
+                device=f"cuda:{gpu_id}" if torch.cuda.is_available() else "cpu",
+                batch_size=1,
+                language=model_config.get("language", "zh"),
+                additional_params=model_config
+            )
+
+            # 重新创建模型实例 - 只加载一次
+            model_factory = ModelFactory()
+            model = model_factory.create_model(model_config_obj)
+
+            if not model or not model.load_model():
+                raise RuntimeError(f"无法在GPU {gpu_id} 上加载模型")
+
+            print(f"进程 {os.getpid()}: 模型加载成功，开始处理批次...")
+
+            # 处理整个样本批次 - 只加载一次模型
+            results = []
+            batch_start_time = time.time()
+
+            for i, item in enumerate(item_batch):
+                try:
+                    # 设置该样本的热词
+                    hotwords = item.get("hotwords", [])
+                    if hotwords:
+                        model.set_hotwords(hotwords)
+                    else:
+                        model.clear_hotwords()
+
+                    # 执行推理
+                    result = model.run_inference(
+                        item["audio_path"],
+                        item.get("reference_text", "")
+                    )
+                    results.append(result)
+
+                    if (i + 1) % 10 == 0:  # 每10个样本打印一次进度
+                        print(f"进程 {os.getpid()}: 进度 {i+1}/{len(item_batch)}")
+
+                except Exception as e:
+                    print(f"进程 {os.getpid()}: 样本推理失败 {item.get('audio_path', 'unknown')}: {e}")
+                    # 创建错误结果
+                    error_result = TestResult(
+                        audio_path=item.get("audio_path", ""),
+                        model_type=model_type,
+                        reference_text=item.get("reference_text", ""),
+                        predicted_text="",
+                        processing_time=0.0,
+                        confidence_score=0.0,
+                        word_timestamps=None
+                    )
+                    results.append(error_result)
+
+            batch_time = time.time() - batch_start_time
+            print(f"进程 {os.getpid()}: 批次处理完成，耗时={batch_time:.2f}秒，平均每个样本={batch_time/len(item_batch):.2f}秒")
+
+            # 清理模型资源
+            if hasattr(model, 'cleanup'):
+                model.cleanup()
+            del model
+
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+
+            return results
+
+        except Exception as e:
+            print(f"热词并行批处理失败: {e}")
+            # 返回错误结果
+            return [TestResult(
+                audio_path=item.get("audio_path", ""),
+                model_type=None,
+                reference_text=item.get("reference_text", ""),
+                predicted_text="",
+                processing_time=0.0,
+                confidence_score=0.0,
+                word_timestamps=None
+            ) for item in item_batch]
 
     def transcribe_audio_parallel(self, audio_paths: List[str], **kwargs) -> List[Dict[str, Any]]:
         """
